@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard, Users, Flag, ListChecks, Settings, User, LogOut,
-  FolderOpen, Menu, X, Mail
+  FolderOpen, Menu, X, Mail, FileCode2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countPendingEmailDrafts } from '@/lib/db';
@@ -40,6 +40,7 @@ const AppSidebar: React.FC = () => {
     { to: '/email-queue', label: 'Email Queue', icon: Mail, badge: pendingEmails },
     { to: '/activity',  label: 'Activity Log', icon: ListChecks },
     { to: '/admin',     label: 'Admin',        icon: Settings, adminOnly: true },
+    { to: '/dev-docs',  label: 'Dev Docs',     icon: FileCode2, adminOnly: true },
     { to: '/profile',   label: 'Profile',      icon: User },
   ];
 
