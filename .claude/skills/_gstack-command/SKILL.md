@@ -1,0 +1,1 @@
+/home/user/remix-of-broder-mansoor-ai-demo/.claude/skills/gstack/SKILL.md
