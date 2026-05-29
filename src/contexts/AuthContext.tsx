@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-export type UserRole = 'client' | 'admin';
+export type UserRole = 'client' | 'admin' | 'preparer';
 
 export interface User {
   id: string;
@@ -17,7 +17,7 @@ interface AuthContextType {
   session: Session | null;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  quickLogin: (role: UserRole) => Promise<void>;
+  quickLogin: (role: 'admin' | 'preparer-shawn' | 'preparer-girik' | 'client') => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -30,15 +30,20 @@ export const useAuth = () => {
   return context;
 };
 
-// Demo credentials — these must exist in Supabase Auth (or be created on first run)
 const DEMO_CREDENTIALS = {
-  admin:  { email: 'nick@brodermansoor.com',  password: 'password123' },
-  client: { email: 'john.smith@email.com',    password: 'password123' },
+  admin:           { email: 'nick@brodermansoor.com',  password: 'password123' },
+  'preparer-shawn': { email: 'shawn@brodermansoor.com', password: 'password123' },
+  'preparer-girik': { email: 'girik@brodermansoor.com', password: 'password123' },
+  client:          { email: 'john.smith@email.com',    password: 'password123' },
 };
 
 function supabaseUserToAppUser(su: SupabaseUser): User {
   const meta = su.user_metadata ?? {};
-  const role: UserRole = meta.role === 'admin' ? 'admin' : 'client';
+  const rawRole = meta.role ?? 'client';
+  const role: UserRole =
+    rawRole === 'admin' ? 'admin' :
+    rawRole === 'preparer' ? 'preparer' :
+    'client';
   return {
     id:       su.id,
     email:    su.email ?? '',
@@ -54,7 +59,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Restore existing session on mount
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         setSession(data.session);
@@ -63,7 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
     });
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       setUser(newSession ? supabaseUserToAppUser(newSession.user) : null);
@@ -88,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (result.error) throw result.error;
   };
 
-  const quickLogin = async (role: UserRole) => {
+  const quickLogin = async (role: keyof typeof DEMO_CREDENTIALS) => {
     const creds = DEMO_CREDENTIALS[role];
     await login(creds.email, creds.password);
   };
