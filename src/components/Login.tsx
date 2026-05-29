@@ -32,7 +32,7 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleQuickLogin = async (role: 'admin' | 'client') => {
+  const handleQuickLogin = async (role: Parameters<typeof quickLogin>[0]) => {
     setIsLoading(true);
     try {
       await quickLogin(role);
@@ -48,8 +48,8 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-blue-900">Broder-Mansoor Portal</CardTitle>
-          <p className="text-muted-foreground">Document Management Dashboard</p>
+          <CardTitle className="text-2xl font-bold text-blue-900">Broder-Mansoor AI</CardTitle>
+          <p className="text-muted-foreground text-sm">AI-Powered Tax Document Management</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -83,24 +83,42 @@ const Login: React.FC = () => {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
               variant="outline"
-              className="w-full h-12 border-2 border-blue-600 text-blue-700 hover:bg-blue-50 font-semibold"
+              className="h-12 border-2 border-blue-700 text-blue-800 hover:bg-blue-50 font-semibold text-xs"
               onClick={() => handleQuickLogin('admin')}
               disabled={isLoading}
             >
-              🔑 Login as Nick (Admin)
+              Nick (Admin)
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="w-full h-12 border-2 border-blue-600 text-blue-700 hover:bg-blue-50 font-semibold"
+              className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs"
+              onClick={() => handleQuickLogin('preparer-shawn')}
+              disabled={isLoading}
+            >
+              Sean (Preparer)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs"
+              onClick={() => handleQuickLogin('preparer-girik')}
+              disabled={isLoading}
+            >
+              Girik (Preparer)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 border-2 border-gray-400 text-gray-600 hover:bg-gray-50 font-semibold text-xs"
               onClick={() => handleQuickLogin('client')}
               disabled={isLoading}
             >
-              🔑 Login as Client (Demo)
+              John (Client)
             </Button>
           </div>
 

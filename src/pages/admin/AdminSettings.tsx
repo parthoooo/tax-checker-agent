@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Copy } from 'lucide-react';
+import { Plus, Copy, Clock, CheckCircle2, FileText, PenLine, Mail, Users, Database, ArrowRight, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 const users = [
@@ -42,8 +42,10 @@ const AdminSettings: React.FC = () => {
         <Tabs defaultValue="users">
           <TabsList>
             <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="taxdome">TaxDome Integration</TabsTrigger>
             <TabsTrigger value="docs">Document Types</TabsTrigger>
+            <TabsTrigger value="cch">CCH Integration</TabsTrigger>
+            <TabsTrigger value="signnow">SignNow E-Signature</TabsTrigger>
+            <TabsTrigger value="outlook">Outlook</TabsTrigger>
             <TabsTrigger value="branding">Branding</TabsTrigger>
           </TabsList>
 
@@ -77,20 +79,214 @@ const AdminSettings: React.FC = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="taxdome">
-            <Card>
-              <CardContent className="pt-6 space-y-4 max-w-xl">
-                <div>
-                  <Label>TaxDome API Key</Label>
-                  <Input type="password" placeholder="sk-taxdome-••••••••••••" />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button onClick={() => toast.info('TaxDome API integration is coming in Phase 2')}>Connect</Button>
-                  <Badge className="bg-gray-100 text-gray-700">⏳ Not Connected</Badge>
-                </div>
-                <p className="text-sm text-gray-500">Connect your TaxDome account to automatically sync your client list and document folders.</p>
-              </CardContent>
-            </Card>
+          {/* CCH Integration */}
+          <TabsContent value="cch">
+            <div className="space-y-4">
+              <Card className="border-l-4 border-l-amber-400">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Status: Pending — API key required</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Waiting for Andrew / Nick to provide CCH Axcess API credentials</p>
+                    </div>
+                    <Badge className="ml-auto bg-amber-100 text-amber-700">Pending</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-5 pb-5">
+                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <Database className="w-4 h-4 text-blue-500" /> What CCH Integration Unlocks
+                    </h3>
+                    <ul className="space-y-2 text-sm text-gray-700">
+                      {[
+                        'Sync client list automatically from CCH Axcess',
+                        'Pull prior-year return data to pre-fill input sheets',
+                        'Import document requirements per engagement type',
+                        'Push completed tax data back to CCH for e-filing',
+                        'Eliminate manual re-keying of return data',
+                      ].map((item, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-5 pb-5 space-y-4">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-gray-400" /> API Credentials
+                    </h3>
+                    <div>
+                      <Label className="text-xs text-gray-500">CCH Axcess API Key</Label>
+                      <Input
+                        type="password"
+                        placeholder="Waiting for credentials from Andrew..."
+                        disabled
+                        className="mt-1 bg-gray-50 cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Firm ID</Label>
+                      <Input
+                        placeholder="Provided by CCH support"
+                        disabled
+                        className="mt-1 bg-gray-50 cursor-not-allowed"
+                      />
+                    </div>
+                    <Button
+                      disabled
+                      className="w-full"
+                      onClick={() => toast.info('CCH API credentials required. Contact Andrew or Nick.')}
+                    >
+                      Connect CCH Axcess
+                    </Button>
+                    <p className="text-xs text-gray-400 text-center">
+                      Once credentials are provided, this integration activates within minutes.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* SignNow E-Signature */}
+          <TabsContent value="signnow">
+            <div className="space-y-4">
+              <Card className="border-l-4 border-l-blue-400">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                      <PenLine className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Status: Integration ready to activate</p>
+                      <p className="text-xs text-gray-500 mt-0.5">SignNow account created — API credentials needed to go live</p>
+                    </div>
+                    <Badge className="ml-auto bg-blue-100 text-blue-700">Ready</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-5 pb-5">
+                    <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-500" /> E-Signature Workflow
+                    </h3>
+                    <div className="space-y-3">
+                      {[
+                        { step: '1', label: 'Return completed in CCH', desc: 'Preparer marks return ready for signature' },
+                        { step: '2', label: 'SignNow request auto-created', desc: 'Client receives email with secure signing link' },
+                        { step: '3', label: 'Client signs digitally', desc: 'IRS Form 8879 + state e-signature captured' },
+                        { step: '4', label: 'Preparer notified', desc: 'Activity log updated, return queued for filing' },
+                      ].map(({ step, label, desc }) => (
+                        <div key={step} className="flex gap-3 items-start">
+                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0">{step}</div>
+                          <div>
+                            <p className="text-sm font-medium">{label}</p>
+                            <p className="text-xs text-gray-500">{desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-5 pb-5 space-y-4">
+                    <h3 className="text-sm font-semibold">Sample Signature Request</h3>
+                    <div className="bg-gray-50 border rounded-lg p-4 space-y-2 text-xs text-gray-700">
+                      <p className="font-medium text-gray-800">📄 2024 Federal Tax Return — John Smith</p>
+                      <p>Document: Form 1040 + Schedule C</p>
+                      <p>Signer: John Smith &lt;john@email.com&gt;</p>
+                      <p>Sent by: girik@brodermansoor.com</p>
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="h-7 flex-1 bg-blue-100 rounded flex items-center justify-center text-blue-700 font-medium text-xs">
+                          Sign Here →
+                        </div>
+                        <Badge className="bg-amber-100 text-amber-700">Awaiting</Badge>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full"
+                      onClick={() => toast.info('SignNow API credentials needed. Contact Nick.')}
+                    >
+                      <PenLine className="w-4 h-4 mr-2" /> Activate SignNow
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Outlook Integration */}
+          <TabsContent value="outlook">
+            <div className="space-y-4">
+              <Card className="border-l-4 border-l-indigo-400">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                      <Mail className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Status: OAuth setup required</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Connect each preparer's Outlook to send AI-drafted emails directly from their address</p>
+                    </div>
+                    <Badge className="ml-auto bg-indigo-100 text-indigo-700">Pending</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Users className="w-4 h-4 text-indigo-500" /> Preparer Connections
+                    </h3>
+                    <p className="text-xs text-gray-400">Connect each account to send approved emails from their mailbox</p>
+                  </div>
+                  <div className="space-y-3">
+                    {[
+                      { name: 'Nick Muqtadir', email: 'nick@brodermansoor.com', role: 'Admin' },
+                      { name: 'Shawn', email: 'shawn@brodermansoor.com', role: 'Preparer' },
+                      { name: 'Girik', email: 'girik@brodermansoor.com', role: 'Preparer' },
+                    ].map((person, i) => (
+                      <div key={i} className="flex items-center gap-4 p-3 border rounded-lg">
+                        <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold shrink-0">
+                          {person.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{person.name}</p>
+                          <p className="text-xs text-gray-500">{person.email} · {person.role}</p>
+                        </div>
+                        <Badge className="bg-gray-100 text-gray-500 shrink-0">
+                          <Clock className="w-3 h-3 mr-1" /> Pending
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => toast.info(`OAuth setup required for ${person.email}. Contact your Microsoft 365 admin.`)}
+                        >
+                          Connect Outlook
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-4 text-center">
+                    Requires Microsoft 365 admin consent. Once connected, approved emails send directly from each preparer's mailbox.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="docs">

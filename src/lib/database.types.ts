@@ -10,6 +10,8 @@ interface ClientRow {
   status: 'active' | 'overdue' | 'complete';
   issues: number;
   assigned_staff: string | null;
+  assigned_preparer: string | null;
+  reminder_cadence_days: number;
   last_activity: string;
   auth_user_id: string | null;
   created_at: string;
@@ -71,6 +73,49 @@ interface ReminderRow {
   sent_at: string;
 }
 
+interface MagicLinkTokenRow {
+  id: string;
+  client_id: string;
+  token: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+}
+
+interface EmailDraftRow {
+  id: string;
+  client_id: string;
+  to_email: string;
+  from_label: string;
+  subject: string;
+  body: string;
+  status: 'pending' | 'approved' | 'sent' | 'dismissed';
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+}
+
+interface InputSheetEntryRow {
+  id: string;
+  client_id: string;
+  tax_year: string;
+  section: string;
+  field_name: string;
+  field_value: string | null;
+  ai_populated: boolean;
+  verified: boolean;
+  created_at: string;
+}
+
+interface TimeEntryRow {
+  id: string;
+  client_id: string;
+  user_email: string;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -108,6 +153,30 @@ export interface Database {
         Row: ReminderRow;
         Insert: Omit<ReminderRow, 'id' | 'sent_at'> & { id?: string; sent_at?: string };
         Update: Partial<Omit<ReminderRow, 'id' | 'sent_at'> & { id?: string; sent_at?: string }>;
+        Relationships: [];
+      };
+      magic_link_tokens: {
+        Row: MagicLinkTokenRow;
+        Insert: Omit<MagicLinkTokenRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<MagicLinkTokenRow>;
+        Relationships: [];
+      };
+      email_drafts: {
+        Row: EmailDraftRow;
+        Insert: Omit<EmailDraftRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<EmailDraftRow>;
+        Relationships: [];
+      };
+      input_sheet_entries: {
+        Row: InputSheetEntryRow;
+        Insert: Omit<InputSheetEntryRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<InputSheetEntryRow>;
+        Relationships: [];
+      };
+      time_entries: {
+        Row: TimeEntryRow;
+        Insert: Omit<TimeEntryRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<TimeEntryRow>;
         Relationships: [];
       };
     };
