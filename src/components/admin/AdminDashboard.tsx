@@ -12,7 +12,7 @@ import AgentTeamBanner from '@/components/ai/AgentTeamBanner';
 import AgentActivityFeed from '@/components/ai/AgentActivityFeed';
 import ReminderModal from '@/components/common/ReminderModal';
 import { toast } from 'sonner';
-import { fetchClients, fetchAiFlags, resolveAiFlag, logActivity } from '@/lib/db';
+import { fetchClients, fetchAiFlags, resolveAiFlag, logActivity, fetchTimeThisWeek } from '@/lib/db';
 import type { Database } from '@/lib/database.types';
 
 type Client  = Database['public']['Tables']['clients']['Row'];
@@ -46,20 +46,26 @@ const AdminDashboard: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [reminderClient, setReminderClient] = useState<Client | null>(null);
 
-  const hours   = useCountUp(14.5);
-  const dollars = useCountUp(406);
+  const [weekHours, setWeekHours] = useState(0);
+  const hours   = useCountUp(weekHours);
+  const dollars = useCountUp(weekHours * 28);
 
   useEffect(() => {
-    Promise.all([fetchClients(), fetchAiFlags(false)])
-      .then(([c, f]) => {
+    Promise.all([fetchClients(), fetchAiFlags(false), fetchTimeThisWeek()])
+      .then(([c, f, hrs]) => {
         setClients(c);
         setFlags(f as FlagRow[]);
+        setWeekHours(hrs);
       })
       .catch(() => toast.error('Failed to load dashboard data'))
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = clients.filter(c =>
+  const visibleClients = user?.role === 'preparer'
+    ? clients.filter(c => c.assigned_preparer === user.email)
+    : clients;
+
+  const filtered = visibleClients.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -70,9 +76,9 @@ const AdminDashboard: React.FC = () => {
     : s === 'overdue' ? 'bg-red-100 text-red-800'
     : 'bg-gray-100 text-gray-800';
 
-  const totalIssues = clients.reduce((s, c) => s + c.issues, 0);
-  const completed   = clients.filter(c => c.status === 'complete').length;
-  const overdue     = clients.filter(c => c.status === 'overdue').length;
+  const totalIssues = visibleClients.reduce((s, c) => s + c.issues, 0);
+  const completed   = visibleClients.filter(c => c.status === 'complete').length;
+  const overdue     = visibleClients.filter(c => c.status === 'overdue').length;
 
   // Show at most 3 unresolved flags in the "Needs Attention" section
   const topFlags = flags.slice(0, 3);
@@ -137,14 +143,14 @@ const AdminDashboard: React.FC = () => {
                 <Clock className="w-4 h-4" /> Time Saved This Week
               </div>
               <div className="mt-2 text-5xl font-bold">{hours.toFixed(1)} <span className="text-3xl font-medium text-blue-200">hrs</span></div>
-              <p className="text-sm text-blue-100 mt-2">Based on 23 wrong-year docs caught + 47 duplicates auto-rejected across 100 clients</p>
+              <p className="text-sm text-blue-100 mt-2">Tracked across {visibleClients.length} client{visibleClients.length !== 1 ? 's' : ''} this week</p>
             </div>
             <div className="md:text-right">
               <div className="flex items-center gap-2 text-blue-200 text-sm font-medium uppercase tracking-wide md:justify-end">
                 <DollarSign className="w-4 h-4" /> Est. Cost Saved
               </div>
               <div className="mt-2 text-5xl font-bold">${Math.round(dollars)}</div>
-              <p className="text-sm text-blue-100 mt-2">14.5 hrs × $28/hr staff rate</p>
+              <p className="text-sm text-blue-100 mt-2">{hours.toFixed(1)} hrs × $28/hr staff rate</p>
             </div>
           </div>
         </div>
