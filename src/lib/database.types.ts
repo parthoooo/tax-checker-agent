@@ -86,12 +86,12 @@ interface EmailDraftRow {
   id: string;
   client_id: string;
   to_email: string;
-  from_label: string;
+  from_label: string | null;
   subject: string;
   body: string;
   status: 'pending' | 'approved' | 'sent' | 'dismissed';
-  approved_by: string | null;
-  approved_at: string | null;
+  created_by: string | null;
+  sent_at: string | null;
   created_at: string;
 }
 
@@ -110,9 +110,10 @@ interface InputSheetEntryRow {
 interface TimeEntryRow {
   id: string;
   client_id: string;
-  user_email: string;
+  user_id: string | null;
   started_at: string;
   ended_at: string | null;
+  note: string | null;
   created_at: string;
 }
 
