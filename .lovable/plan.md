@@ -1,28 +1,40 @@
-# Fix: Clients page shows "0 clients"
+## Goal
 
-## Root cause
-The `/clients` page is loading, but `fetchClients()` returns an empty array. All RLS policies on the demo tables only allow rows through when `is_admin()` is true. If the viewer isn't logged in as Nick (session lost, viewing as a client, or browsing without logging in), RLS silently returns 0 rows — no error, just empty table.
+`FEATURES.md` is out of date — it still describes the original mock/localStorage prototype. The app has since moved to a real Supabase backend with new pages, roles, and flows. I'll rewrite it so it accurately reflects what's shipped today.
 
-For a client demo, we want every page to render data reliably regardless of which demo account is active.
+## What's missing or wrong in the current file
 
-## Fix
+- **Auth**: now real Supabase email/password (not mock/localStorage). Includes Google OAuth, 4 quick demo logins (Nick admin, Shawn preparer, Girik preparer, John client), and a `preparer` role.
+- **Magic link upload portal** (`/upload/:token`) for clients to upload without logging in — not listed.
+- **Email Queue** page (`/email-queue`) for reviewing/approving/editing AI-drafted client emails — not listed.
+- **Dev Docs** page (`/dev-docs`) admin-only build status reference — not listed.
+- **Input Sheet** component (AI-populated tax input sheet with verify flow) — not listed.
+- **Time Tracker** component (auto start/stop time entries for preparers on client view) — not listed.
+- **Seed demo users** edge function — not listed.
+- **Data layer**: Supabase tables (clients, document_requirements, document_uploads, ai_flags, email_drafts, activity_log, time_entries, input_sheet_entries, reminders) — current doc still implies localStorage.
+- **Role routing**: preparer role + new redirect rules in `ProtectedRoute`.
+- **Routes**: `/email-queue`, `/dev-docs`, `/upload/:token` all missing from Navigation section.
 
-Add a permissive **read-only** RLS policy for `authenticated` users to every demo table so anyone logged in (admin OR client demo account) can see all the seeded demo content. Writes (insert/update/delete) remain locked to `is_admin()` or the existing per-client policies — no security regression for data mutations.
+## Plan
 
-### Tables to update
-- `clients` — add: authenticated can SELECT all
-- `document_requirements` — add: authenticated can SELECT all
-- `document_uploads` — add: authenticated can SELECT all
-- `ai_flags` — add: authenticated can SELECT all
-- `activity_log` — add: authenticated can SELECT all
-- `reminders` — add: authenticated can SELECT all
+Rewrite `FEATURES.md` end-to-end with these sections:
 
-Single migration with 6 `CREATE POLICY ... FOR SELECT TO authenticated USING (true)` statements.
+1. **Authentication & Roles** — Supabase auth, email/password, Google OAuth, 3 roles (admin/preparer/client), 4 quick demo logins, role-based route protection with preparer fallback.
+2. **Client Dashboard** (`/portal`) — checklist driven by `document_requirements`, real uploads to `document_uploads`, AI simulation outcomes, reminder logging.
+3. **Magic Link Upload Portal** (`/upload/:token`) — tokenized client upload, expiry handling, same AI validation pipeline, writes flags + email drafts + activity.
+4. **Admin Dashboard** (`/dashboard`) — ROI hero, AI agent team banner, live activity feed, "Needs Your Attention" flag cards, client table with remind action.
+5. **Clients** (`/clients`, `/clients/:id`) — list with search/filter/add modal; detail page tabs (Checklist, AI Flags, Activity, Internal Notes) plus Input Sheet and Time Tracker.
+6. **AI Flags** (`/flags`) — severity badges, filters, resolution actions.
+7. **Activity Log** (`/activity`) — cross-client timeline from `activity_log` table.
+8. **Email Queue** (`/email-queue`) — pending vs sent AI email drafts, edit subject/body, approve/dismiss.
+9. **Admin Settings** (`/admin`) — User Management, TaxDome Integration, Document Types, Branding.
+10. **Dev Docs** (`/dev-docs`, admin only) — internal build status reference.
+11. **Profile** (`/profile`) — shared admin/client profile.
+12. **Input Sheet** (component) — AI populate from uploaded docs, per-row verify.
+13. **Time Tracker** (component) — auto start/stop time entries for preparers.
+14. **Branding & Navigation** — sidebar items per role (admin / preparer / client), Broder-Mansoor branding, "Powered by SJ Innovation AI".
+15. **Backend (Lovable Cloud)** — list the real Supabase tables, the `seed-demo-users` edge function, RLS posture (note: still to be hardened).
+16. **Tech / UI** — React 18 + Vite + TS + Tailwind + shadcn/ui, React Router v6, Sonner, Lucide, TanStack Query, Supabase JS.
+17. **Maintenance rule** — keep existing rule at the bottom.
 
-### Also: auto-redirect after login
-Verify `Index.tsx` quick-login flow routes to `/dashboard` after admin login. If the user landed on `/clients` without an active session, ProtectedRoute should have bounced them to `/`. The screenshot shows the page is loading — so a session exists but lacks admin role. The RLS fix above makes this moot.
-
-## Out of scope
-- No code/UI changes
-- No data changes (data already seeded)
-- No changes to write policies — still admin-only / per-client
+No code changes — documentation only. Single file touched: `FEATURES.md`.
