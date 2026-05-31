@@ -243,6 +243,45 @@ export type Database = {
           },
         ]
       }
+      email_drafts: {
+        Row: {
+          body: string
+          client_id: string
+          created_at: string
+          created_by: string | null
+          from_label: string | null
+          id: string
+          sent_at: string | null
+          status: string
+          subject: string
+          to_email: string
+        }
+        Insert: {
+          body: string
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          from_label?: string | null
+          id?: string
+          sent_at?: string | null
+          status?: string
+          subject: string
+          to_email: string
+        }
+        Update: {
+          body?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          from_label?: string | null
+          id?: string
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          to_email?: string
+        }
+        Relationships: []
+      }
       reminders: {
         Row: {
           body: string
@@ -280,6 +319,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      time_entries: {
+        Row: {
+          client_id: string
+          created_at: string
+          ended_at: string | null
+          id: string
+          note: string | null
+          started_at: string
+          user_id: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          note?: string | null
+          started_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          note?: string | null
+          started_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
