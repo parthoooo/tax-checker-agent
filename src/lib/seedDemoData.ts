@@ -249,38 +249,50 @@ const SCENARIOS: Record<string, Scenario> = {
 export async function seedAllDemoData(onProgress?: (msg: string) => void): Promise<void> {
   const log = (msg: string) => { onProgress?.(msg); };
 
+  const check = (label: string, error: unknown) => {
+    if (error) throw new Error(`${label}: ${(error as any).message ?? JSON.stringify(error)}`);
+  };
+
   log('Fetching clients...');
   const { data: clients, error: clientErr } = await supabase
     .from('clients')
     .select('*')
     .order('name');
-  if (clientErr) throw clientErr;
-  if (!clients || clients.length === 0) throw new Error('No clients found in database');
+  check('fetch clients', clientErr);
+  if (!clients || clients.length === 0) throw new Error('No clients found in database. Make sure the seed.sql has been applied.');
 
   for (const client of clients) {
     const scenario = SCENARIOS[client.name];
     if (!scenario) continue;
 
     log(`Seeding ${client.name}...`);
+    const now = Date.now();
 
-    // ── 1. Clear existing AI-generated data for this client ──────────────────
-    await supabase.from('document_uploads').delete().eq('client_id', client.id);
-    await supabase.from('ai_flags').delete().eq('client_id', client.id).eq('resolved', false);
-    await supabase.from('email_drafts').delete().eq('client_id', client.id).eq('status', 'pending');
-    await supabase.from('input_sheet_entries').delete().eq('client_id', client.id).eq('ai_populated', true).eq('verified', false);
-    await supabase.from('activity_log').delete().eq('client_id', client.id);
-    await supabase.from('time_entries').delete().eq('client_id', client.id);
+    // ── 1. Clear existing data for this client ───────────────────────────────
+    const { error: e1 } = await supabase.from('document_uploads').delete().eq('client_id', client.id);
+    check(`clear uploads (${client.name})`, e1);
+    const { error: e2 } = await supabase.from('ai_flags').delete().eq('client_id', client.id);
+    check(`clear flags (${client.name})`, e2);
+    const { error: e3 } = await supabase.from('email_drafts').delete().eq('client_id', client.id).eq('status', 'pending');
+    check(`clear email drafts (${client.name})`, e3);
+    const { error: e4 } = await supabase.from('input_sheet_entries').delete().eq('client_id', client.id);
+    check(`clear input sheet (${client.name})`, e4);
+    const { error: e5 } = await supabase.from('activity_log').delete().eq('client_id', client.id);
+    check(`clear activity (${client.name})`, e5);
+    const { error: e6 } = await supabase.from('time_entries').delete().eq('client_id', client.id);
+    check(`clear time entries (${client.name})`, e6);
 
     // ── 2. Seed / ensure document requirements ───────────────────────────────
-    const { data: existingReqs } = await supabase
+    const { data: existingReqs, error: reqFetchErr } = await supabase
       .from('document_requirements')
       .select('id, doc_type')
       .eq('client_id', client.id);
+    check(`fetch requirements (${client.name})`, reqFetchErr);
 
     let reqIds: string[] = existingReqs?.map(r => r.id) ?? [];
 
     if (!existingReqs || existingReqs.length === 0) {
-      const { data: newReqs } = await supabase
+      const { data: newReqs, error: reqInsertErr } = await supabase
         .from('document_requirements')
         .insert(scenario.requirements.map(r => ({
           client_id: client.id,
@@ -290,11 +302,11 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
           required:  true,
         })))
         .select('id');
+      check(`insert requirements (${client.name})`, reqInsertErr);
       reqIds = newReqs?.map(r => r.id) ?? [];
     }
 
     // ── 3. Seed document uploads ─────────────────────────────────────────────
-    const now = Date.now();
     const uploadInserts = scenario.uploads.map((u, i) => ({
       client_id:      client.id,
       requirement_id: reqIds[i] ?? null,
@@ -306,10 +318,11 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
       uploaded_by:    null,
     }));
 
-    const { data: insertedUploads } = await supabase
+    const { data: insertedUploads, error: uploadErr } = await supabase
       .from('document_uploads')
       .insert(uploadInserts)
       .select('id');
+    check(`insert uploads (${client.name})`, uploadErr);
 
     // ── 4. Seed AI flags ─────────────────────────────────────────────────────
     if (scenario.flags.length > 0) {
@@ -323,7 +336,8 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
         resolved:    false,
         resolved_at: null,
       }));
-      await supabase.from('ai_flags').insert(flagInserts);
+      const { error: flagErr } = await supabase.from('ai_flags').insert(flagInserts);
+      check(`insert flags (${client.name})`, flagErr);
     }
 
     // ── 5. Seed email drafts ─────────────────────────────────────────────────
@@ -333,16 +347,17 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
         scenario.email.missingDocs,
         scenario.email.preparer,
       );
-      await supabase.from('email_drafts').insert({
-        client_id:  client.id,
-        to_email:   client.email,
-        from_label: scenario.email.preparer,
-        subject:    scenario.email.subject,
+      const { error: emailErr } = await supabase.from('email_drafts').insert({
+        client_id:   client.id,
+        to_email:    client.email,
+        from_label:  scenario.email.preparer,
+        subject:     scenario.email.subject,
         body,
-        status:     scenario.email.status,
+        status:      scenario.email.status,
         approved_by: scenario.email.status === 'sent' ? scenario.email.preparer : null,
         approved_at: scenario.email.status === 'sent' ? new Date(now - 3600000).toISOString() : null,
       });
+      check(`insert email draft (${client.name})`, emailErr);
     }
 
     // ── 6. Seed activity log ─────────────────────────────────────────────────
@@ -353,7 +368,8 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
       action:     a.action,
       created_at: new Date(now - a.minutesAgo * 60000).toISOString(),
     }));
-    await supabase.from('activity_log').insert(activityInserts);
+    const { error: actErr } = await supabase.from('activity_log').insert(activityInserts);
+    check(`insert activity (${client.name})`, actErr);
 
     // ── 7. Seed input sheet entries ──────────────────────────────────────────
     const fields = generateInputSheetData(client.name, scenario.inputFileNames);
@@ -365,31 +381,31 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
         field_name:   f.field_name,
         field_value:  f.field_value,
         ai_populated: true,
-        verified:     client.name === 'Sarah Johnson', // Sarah is complete — all verified
+        verified:     client.name === 'Sarah Johnson',
       }));
-      await supabase.from('input_sheet_entries').insert(inputInserts);
+      const { error: inputErr } = await supabase.from('input_sheet_entries').insert(inputInserts);
+      check(`insert input sheet (${client.name})`, inputErr);
     }
 
     // ── 8. Seed time entries ─────────────────────────────────────────────────
-    const hoursMs = scenario.timeHours * 3600000;
-    const startedAt = new Date(now - hoursMs - 7200000); // started 2h+ ago
-    const endedAt   = new Date(now - 7200000);           // ended 2h ago
-    await supabase.from('time_entries').insert({
-      client_id:        client.id,
-      user_email:       client.assigned_preparer ?? 'sean@brodermansoor.com',
-      started_at:       startedAt.toISOString(),
-      ended_at:         endedAt.toISOString(),
-      duration_seconds: Math.round(scenario.timeHours * 3600),
+    const hoursMs   = scenario.timeHours * 3600000;
+    const startedAt = new Date(now - hoursMs - 7200000);
+    const endedAt   = new Date(now - 7200000);
+    const { error: timeErr } = await supabase.from('time_entries').insert({
+      client_id:  client.id,
+      user_email: client.assigned_preparer ?? 'sean@brodermansoor.com',
+      started_at: startedAt.toISOString(),
+      ended_at:   endedAt.toISOString(),
     });
+    check(`insert time entry (${client.name})`, timeErr);
 
     // ── 9. Update client doc counts to match seeded data ────────────────────
-    const verifiedCount  = scenario.uploads.filter(u => u.ai_status === 'verified').length;
-    const hasIssues      = scenario.flags.length;
-    await supabase.from('clients').update({
+    const { error: updateErr } = await supabase.from('clients').update({
       documents_submitted: scenario.uploads.length,
-      issues:              hasIssues,
+      issues:              scenario.flags.length,
       last_activity:       new Date(now - scenario.activities[scenario.activities.length - 1].minutesAgo * 60000).toISOString(),
     }).eq('id', client.id);
+    check(`update client counts (${client.name})`, updateErr);
   }
 
   log('Done ✅');
