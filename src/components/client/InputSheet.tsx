@@ -16,15 +16,24 @@ type Entry = Database['public']['Tables']['input_sheet_entries']['Row'];
 
 interface Props {
   clientId: string;
+  clientName?: string;
   taxYear?: string;
 }
 
 const SECTION_ORDER = ['W-2', '1099-NEC', '1099-INT', '1099-DIV', '1099-B', '1098', 'K-1', 'Schedule C'];
 
-const InputSheet: React.FC<Props> = ({ clientId, taxYear = '2024' }) => {
+const PROGRESS_STEPS = [
+  '📄 Reading uploaded documents...',
+  '🔍 Extracting income fields...',
+  '🔍 Processing deductions...',
+  '✅ Input sheet ready',
+];
+
+const InputSheet: React.FC<Props> = ({ clientId, clientName = 'Client', taxYear = '2024' }) => {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [populating, setPopulating] = useState(false);
+  const [progressStep, setProgressStep] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -42,15 +51,24 @@ const InputSheet: React.FC<Props> = ({ clientId, taxYear = '2024' }) => {
 
   const handlePopulate = async () => {
     setPopulating(true);
+    setProgressStep(PROGRESS_STEPS[0]);
+
+    const stepTimers: ReturnType<typeof setTimeout>[] = [];
+    PROGRESS_STEPS.slice(1).forEach((step, i) => {
+      stepTimers.push(setTimeout(() => setProgressStep(step), (i + 1) * 800));
+    });
+
     try {
       const uploads = await fetchDocumentUploads(clientId);
-      await populateInputSheet(clientId, uploads, taxYear);
+      await populateInputSheet(clientId, uploads, taxYear, clientName);
       await load();
       toast.success('Input sheet populated from uploaded documents');
     } catch {
       toast.error('Auto-population failed');
     } finally {
+      stepTimers.forEach(clearTimeout);
       setPopulating(false);
+      setProgressStep('');
     }
   };
 
@@ -109,6 +127,9 @@ const InputSheet: React.FC<Props> = ({ clientId, taxYear = '2024' }) => {
             : <Sparkles className="w-4 h-4" />}
           Auto-populate from uploads
         </Button>
+        {populating && progressStep && (
+          <span className="text-sm text-blue-600 animate-pulse">{progressStep}</span>
+        )}
         {entries.length > 0 && (
           <Button variant="outline" onClick={handleExport} className="gap-2">
             <Download className="w-4 h-4" /> Export CSV

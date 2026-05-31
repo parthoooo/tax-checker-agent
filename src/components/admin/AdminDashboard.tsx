@@ -13,6 +13,7 @@ import AgentActivityFeed from '@/components/ai/AgentActivityFeed';
 import ReminderModal from '@/components/common/ReminderModal';
 import { toast } from 'sonner';
 import { fetchClients, fetchAiFlags, resolveAiFlag, logActivity, fetchTimeThisWeek } from '@/lib/db';
+import { seedAllDemoData } from '@/lib/seedDemoData';
 import type { Database } from '@/lib/database.types';
 
 type Client  = Database['public']['Tables']['clients']['Row'];
@@ -46,19 +47,34 @@ const AdminDashboard: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [reminderClient, setReminderClient] = useState<Client | null>(null);
 
-  const [weekHours, setWeekHours] = useState(0);
+  const [weekHours, setWeekHours]   = useState(0);
+  const [seeding, setSeeding]       = useState(false);
+  const [seedProgress, setSeedProgress] = useState('');
   const hours   = useCountUp(weekHours);
   const dollars = useCountUp(weekHours * 28);
 
-  useEffect(() => {
+  const reload = () =>
     Promise.all([fetchClients(), fetchAiFlags(false), fetchTimeThisWeek()])
-      .then(([c, f, hrs]) => {
-        setClients(c);
-        setFlags(f as FlagRow[]);
-        setWeekHours(hrs);
-      })
-      .catch(() => toast.error('Failed to load dashboard data'))
-      .finally(() => setLoading(false));
+      .then(([c, f, hrs]) => { setClients(c); setFlags(f as FlagRow[]); setWeekHours(hrs); })
+      .catch(() => toast.error('Failed to load dashboard data'));
+
+  const handleSeedDemo = async () => {
+    setSeeding(true);
+    setSeedProgress('Starting...');
+    try {
+      await seedAllDemoData(msg => setSeedProgress(msg));
+      await reload();
+      toast.success('🎬 Demo data loaded!', { description: 'All clients, documents, flags, emails and input sheets are now populated.' });
+    } catch (err: any) {
+      toast.error('Seeding failed', { description: err?.message });
+    } finally {
+      setSeeding(false);
+      setSeedProgress('');
+    }
+  };
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
   }, []);
 
   const visibleClients = user?.role === 'preparer'
@@ -184,6 +200,26 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Demo Seed Banner */}
+        <div className="mb-8 rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="font-semibold text-indigo-900 text-sm">🎬 Presentation Mode</p>
+            <p className="text-xs text-indigo-600 mt-0.5">
+              {seeding ? seedProgress : 'Populate every screen with realistic demo data — documents, flags, emails, input sheets, and activity logs for all 5 clients.'}
+            </p>
+          </div>
+          <Button
+            onClick={handleSeedDemo}
+            disabled={seeding}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shrink-0"
+          >
+            {seeding
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <span>🎬</span>}
+            {seeding ? 'Loading demo data…' : 'Load Demo Data'}
+          </Button>
+        </div>
 
         {/* Stats */}
         {loading ? (
