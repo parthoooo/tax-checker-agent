@@ -246,7 +246,7 @@ const ClientDetail: React.FC = () => {
 
           {/* Input Sheet */}
           <TabsContent value="input-sheet">
-            <InputSheet clientId={client.id} />
+            <InputSheet clientId={client.id} clientName={client.name} />
           </TabsContent>
 
           {/* AI Flags */}
