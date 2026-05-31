@@ -218,7 +218,7 @@ export async function createEmailDraft(
 export async function approveEmailDraft(id: string, approvedBy: string): Promise<void> {
   const { error } = await supabase
     .from('email_drafts')
-    .update({ status: 'sent', approved_by: approvedBy, approved_at: new Date().toISOString() })
+    .update({ status: 'sent', sent_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
 }

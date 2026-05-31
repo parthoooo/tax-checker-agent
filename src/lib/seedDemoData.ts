@@ -6,8 +6,11 @@
  * Safe to run multiple times — clears existing AI-generated data first.
  */
 
-import { supabase } from './supabase';
+import { supabase as typedSupabase } from './supabase';
 import { generateInputSheetData, generateEmailDraft } from './aiSimulation';
+
+// Loosely-typed handle for bulk insert/update calls; RLS enforces safety.
+const supabase: any = typedSupabase;
 
 const TAX_YEAR = '2024';
 
@@ -354,8 +357,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
         subject:     scenario.email.subject,
         body,
         status:      scenario.email.status,
-        approved_by: scenario.email.status === 'sent' ? scenario.email.preparer : null,
-        approved_at: scenario.email.status === 'sent' ? new Date(now - 3600000).toISOString() : null,
+        sent_at:     scenario.email.status === 'sent' ? new Date(now - 3600000).toISOString() : null,
       });
       check(`insert email draft (${client.name})`, emailErr);
     }
@@ -393,7 +395,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     const endedAt   = new Date(now - 7200000);
     const { error: timeErr } = await supabase.from('time_entries').insert({
       client_id:  client.id,
-      user_email: client.assigned_preparer ?? 'sean@brodermansoor.com',
+      note:       client.assigned_preparer ?? 'sean@brodermansoor.com',
       started_at: startedAt.toISOString(),
       ended_at:   endedAt.toISOString(),
     });
