@@ -70,13 +70,11 @@ const MagicLinkPortal: React.FC = () => {
       r.id === req.id ? { ...r, uploadState: 'analyzing' } : r
     ));
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const existingNames = requirements
       .filter(r => r.upload && r.id !== req.id)
       .map(r => r.upload!.file_name);
 
-    const result = simulateValidation(file, existingNames, req.doc_type);
+    const result = await simulateValidation(file, existingNames, req.doc_type);
 
     // Create a fake storage path for demo (no real Supabase storage in demo)
     const storagePath = `clients/${client.id}/${Date.now()}_${file.name}`;

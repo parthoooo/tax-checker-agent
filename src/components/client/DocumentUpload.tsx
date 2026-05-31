@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Upload, FileText, X, Loader2, AlertTriangle, CheckCircle2, Copy, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadFileToStorage, createDocumentUpload, createAiFlag, logActivity } from '@/lib/db';
+import { simulateValidation } from '@/lib/aiSimulation';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DocumentUploadProps {
@@ -13,100 +14,78 @@ interface DocumentUploadProps {
   onUpload: (documentId: string, file: File) => void;
 }
 
-type AnalysisResult =
-  | { kind: 'wrong-year'; message: string }
-  | { kind: 'duplicate'; message: string }
-  | { kind: 'unexpected'; message: string }
-  | { kind: 'verified'; message: string };
+import type { ValidationResult } from '@/lib/aiSimulation';
 
 const sessionUploaded = new Set<string>();
-
-const analyzeFile = (file: File): AnalysisResult => {
-  const name = file.name.toLowerCase();
-  if (/(20)(19|20|21|22|23)/.test(name)) {
-    return { kind: 'wrong-year', message: `AI identified this as a ${name.match(/(20)(19|20|21|22|23)/)?.[0]} document. You need 2024.` };
-  }
-  if (sessionUploaded.has(name)) {
-    return { kind: 'duplicate', message: `This file was already uploaded on ${new Date().toLocaleDateString()}. Skipping to save your time.` };
-  }
-  if (/(bank|statement)/.test(name)) {
-    return { kind: 'unexpected', message: 'This appears to be a bank statement which is not required.' };
-  }
-  return { kind: 'verified', message: 'Document accepted and filed in the correct folder.' };
-};
 
 const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentName, hint, clientId, onUpload }) => {
   const { user, session } = useAuth();
   const [isDragOver, setIsDragOver]   = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysis, setAnalysis]       = useState<AnalysisResult | null>(null);
+  const [analysis, setAnalysis]       = useState<ValidationResult | null>(null);
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     setSelectedFile(file);
     setAnalysis(null);
     setIsAnalyzing(true);
 
-    setTimeout(async () => {
-      const result = analyzeFile(file);
-      setAnalysis(result);
-      setIsAnalyzing(false);
+    const result = await simulateValidation(file, [...sessionUploaded]);
+    setAnalysis(result);
+    setIsAnalyzing(false);
 
-      if (result.kind === 'verified') {
-        sessionUploaded.add(file.name.toLowerCase());
-        try {
-          // Upload to Supabase Storage
-          const storagePath = await uploadFileToStorage(clientId, file);
+    if (result.outcome === 'verified') {
+      sessionUploaded.add(file.name.toLowerCase());
+      try {
+        const storagePath = await uploadFileToStorage(clientId, file);
 
-          // Save document_uploads record
-          await createDocumentUpload({
-            client_id:      clientId,
-            requirement_id: documentId.startsWith('req-') ? documentId.replace('req-', '') : null,
-            file_name:      file.name,
-            storage_path:   storagePath,
-            file_size:      file.size,
-            mime_type:      file.type || null,
-            ai_status:      'verified',
-            uploaded_by:    session?.user?.id ?? null,
-          });
+        await createDocumentUpload({
+          client_id:      clientId,
+          requirement_id: documentId.startsWith('req-') ? documentId.replace('req-', '') : null,
+          file_name:      file.name,
+          storage_path:   storagePath,
+          file_size:      file.size,
+          mime_type:      file.type || null,
+          ai_status:      'verified',
+          uploaded_by:    session?.user?.id ?? null,
+        });
 
-          // Log activity
-          await logActivity({
-            client_id:  clientId,
-            actor:      user?.name ?? 'Client',
-            actor_type: 'client',
-            action:     `Uploaded ${file.name}`,
-          });
+        await logActivity({
+          client_id:  clientId,
+          actor:      user?.name ?? 'Client',
+          actor_type: 'client',
+          action:     `Uploaded ${file.name}`,
+        });
 
-          onUpload(documentId, file);
-          toast.success('Document uploaded', { description: `${documentName} verified and filed.` });
-        } catch (err: any) {
-          toast.error('Upload failed', { description: err?.message ?? 'Please try again.' });
-          setAnalysis(null);
-          setSelectedFile(null);
-        }
-      } else {
-        // Flag issues in DB
-        const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
-          'wrong-year': 'wrong-year',
-          'duplicate':  'duplicate',
-          'unexpected': 'unexpected',
-        };
-        const ft = flagTypeMap[result.kind];
-        if (ft && clientId) {
-          createAiFlag({
-            client_id:   clientId,
-            upload_id:   null,
-            flag_type:   ft,
-            severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
-            description: result.message,
-            detected_by: 'Doc Classifier Agent',
-            resolved:    false,
-            resolved_at: null,
-          }).catch(() => {/* silent — UI feedback already shown */});
-        }
+        onUpload(documentId, file);
+        toast.success('Document uploaded', { description: `${documentName} verified and filed.` });
+      } catch (err: any) {
+        toast.error('Upload failed', { description: err?.message ?? 'Please try again.' });
+        setAnalysis(null);
+        setSelectedFile(null);
       }
-    }, 1500);
+    } else {
+      const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
+        'wrong-year':        'wrong-year',
+        'duplicate':         'duplicate',
+        'unexpected':        'unexpected',
+        'too-small':         'unexpected',
+        'page_count_warning':'unexpected',
+      };
+      const ft = flagTypeMap[result.outcome];
+      if (ft && clientId) {
+        createAiFlag({
+          client_id:   clientId,
+          upload_id:   null,
+          flag_type:   ft,
+          severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
+          description: result.detail,
+          detected_by: 'Doc Classifier Agent',
+          resolved:    false,
+          resolved_at: null,
+        }).catch(() => {});
+      }
+    }
   };
 
   const handleDragOver  = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); }, []);
@@ -177,52 +156,66 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
             </div>
           )}
 
-          {analysis?.kind === 'wrong-year' && (
+          {analysis?.outcome === 'wrong-year' && (
             <div className="p-3 rounded-md bg-red-50 border border-red-300">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-red-900 text-sm">⚠️ Wrong Year Detected</p>
-                  <p className="text-sm text-red-800 mt-1">{analysis.message} Please upload the correct year.</p>
+                  <p className="font-semibold text-red-900 text-sm">⚠️ {analysis.title}</p>
+                  <p className="text-sm text-red-800 mt-1">{analysis.detail}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-red-300" onClick={reset}>Re-upload</Button>
                 </div>
               </div>
             </div>
           )}
 
-          {analysis?.kind === 'duplicate' && (
+          {analysis?.outcome === 'duplicate' && (
             <div className="p-3 rounded-md bg-orange-50 border border-orange-300">
               <div className="flex items-start gap-2">
                 <Copy className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-orange-900 text-sm">🔁 Duplicate Detected</p>
-                  <p className="text-sm text-orange-800 mt-1">{analysis.message}</p>
+                  <p className="font-semibold text-orange-900 text-sm">🔁 {analysis.title}</p>
+                  <p className="text-sm text-orange-800 mt-1">{analysis.detail}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-orange-300" onClick={reset}>Dismiss</Button>
                 </div>
               </div>
             </div>
           )}
 
-          {analysis?.kind === 'unexpected' && (
+          {(analysis?.outcome === 'unexpected' || analysis?.outcome === 'too-small') && (
             <div className="p-3 rounded-md bg-yellow-50 border border-yellow-300">
               <div className="flex items-start gap-2">
                 <FileWarning className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-yellow-900 text-sm">📂 Unexpected File</p>
-                  <p className="text-sm text-yellow-800 mt-1">{analysis.message} Remove it?</p>
+                  <p className="font-semibold text-yellow-900 text-sm">📂 {analysis.title}</p>
+                  <p className="text-sm text-yellow-800 mt-1">{analysis.detail}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-yellow-400" onClick={reset}>Remove</Button>
                 </div>
               </div>
             </div>
           )}
 
-          {analysis?.kind === 'verified' && (
+          {analysis?.outcome === 'page_count_warning' && (
+            <div className="p-3 rounded-md bg-amber-50 border border-amber-300">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-900 text-sm">📄 {analysis.title}</p>
+                  <p className="text-sm text-amber-800 mt-1">{analysis.detail}</p>
+                  <Button size="sm" variant="outline" className="mt-2 border-amber-400" onClick={reset}>Re-upload</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {analysis?.outcome === 'verified' && (
             <div className="p-3 rounded-md bg-green-50 border border-green-300">
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-green-900 text-sm">✅ AI Verified</p>
-                  <p className="text-sm text-green-800 mt-1">{analysis.message}</p>
+                  <p className="font-semibold text-green-900 text-sm">✅ {analysis.title}</p>
+                  <p className="text-sm text-green-800 mt-1">{analysis.detail}</p>
+                  <p className="text-xs text-green-600 mt-0.5">Confidence: {analysis.confidence}%</p>
                 </div>
               </div>
             </div>

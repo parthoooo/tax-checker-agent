@@ -13,43 +13,54 @@ const now = Date.now();
 const seed = (offsetSec: number): Date => new Date(now - offsetSec * 1000);
 
 const initialEntries: FeedEntry[] = [
-  { id: '1', agent: 'Doc Classifier Agent', action: 'Scanned "1099-NEC-MBrown.pdf" → Filed to 1099-NEC / 2024 folder ✅', client: 'Michael Brown', result: 'success', timestamp: seed(2) },
-  { id: '2', agent: 'Duplicate Detector Agent', action: 'Matched "W2_Smith_2024.pdf" against existing upload → Duplicate blocked 🔁', client: 'John Smith', result: 'info', timestamp: seed(8) },
-  { id: '3', agent: 'Missing Doc Tracker Agent', action: 'Michael Brown missing 4 docs → Queued for follow-up 📋', client: 'Michael Brown', result: 'warning', timestamp: seed(15) },
-  { id: '4', agent: 'Doc Classifier Agent', action: 'Scanned "bankstatement_jan.pdf" → Flagged: not required for tax filing ⚠️', client: 'Sarah Johnson', result: 'warning', timestamp: seed(22) },
-  { id: '5', agent: 'Follow-up Sender Agent', action: 'Sent reminder to robert.chen@email.com → "Missing: W-2, 1099-NEC, 1098, Schedule C" 📧', client: 'Robert Chen', result: 'info', timestamp: seed(35) },
-  { id: '6', agent: 'Doc Classifier Agent', action: 'Scanned "W2_2023_JohnSmith.pdf" → Wrong year detected: 2023 vs required 2024 ⚠️', client: 'John Smith', result: 'warning', timestamp: seed(48) },
-  { id: '7', agent: 'Duplicate Detector Agent', action: 'Scanned batch of 12 files for John Smith → 3 duplicates removed 🗑️', client: 'John Smith', result: 'success', timestamp: seed(60) },
-  { id: '8', agent: 'Missing Doc Tracker Agent', action: 'Sarah Johnson checklist complete → All 4 docs verified ✅', client: 'Sarah Johnson', result: 'success', timestamp: seed(75) },
+  { id: '1', agent: 'Doc Classifier Agent',     action: 'Verified W2_2024.pdf for John Smith — employer: Acme Corp, confidence 97%', client: 'John Smith',        result: 'success', timestamp: seed(2)  },
+  { id: '2', agent: 'Duplicate Detector Agent', action: 'Blocked duplicate 1099-NEC.pdf from Maria Rodriguez — matches upload from Jan 14', client: 'Maria Rodriguez', result: 'warning', timestamp: seed(9)  },
+  { id: '3', agent: 'Missing Doc Tracker Agent',action: 'Robert Chen is missing 3 documents — W-2, 1098, Schedule C — reminder queued', client: 'Robert Chen',      result: 'warning', timestamp: seed(18) },
+  { id: '4', agent: 'Follow-up Sender Agent',   action: 'Sent missing doc reminder to michael.brown@email.com — delivered ✅', client: 'Michael Brown',    result: 'info',    timestamp: seed(29) },
+  { id: '5', agent: 'Doc Classifier Agent',     action: 'Wrong year detected in W2_2023_sarah.pdf — flagged for correction ⚠️', client: 'Sarah Johnson',   result: 'warning', timestamp: seed(41) },
+  { id: '6', agent: 'Duplicate Detector Agent', action: 'Scanned 847 files today — 3 duplicates blocked, 844 accepted ✅', client: 'John Smith',        result: 'success', timestamp: seed(55) },
+  { id: '7', agent: 'Missing Doc Tracker Agent','action': 'Sarah Johnson submitted final document — checklist complete ✅', client: 'Sarah Johnson',   result: 'success', timestamp: seed(70) },
+  { id: '8', agent: 'Follow-up Sender Agent',   action: 'Reminder email approved by Girik and delivered to robert.chen@email.com', client: 'Robert Chen',      result: 'info',    timestamp: seed(88) },
 ];
 
-const clients = ['John Smith', 'Michael Brown', 'Sarah Johnson', 'Robert Chen', 'Maria Rodriguez'];
-const docs = ['W2_2024.pdf', '1099-NEC_Q4.pdf', '1098_mortgage.pdf', 'K-1_partnership.pdf', 'Schedule_C.pdf', 'receipts_jan.pdf'];
-const folders = ['W-2 / 2024', '1099-NEC / 2024', '1098 / 2024', 'K-1 / 2024'];
-
-const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
-
-const generators: Array<() => Omit<FeedEntry, 'id' | 'timestamp'>> = [
-  () => {
-    const c = pick(clients); const d = pick(docs); const f = pick(folders);
-    return { agent: 'Doc Classifier Agent', action: `Scanned "${d}" → Filed to ${f} folder ✅`, client: c, result: 'success' };
-  },
-  () => {
-    const c = pick(clients);
-    return { agent: 'Duplicate Detector Agent', action: `Checked ${c} uploads → No duplicates found ✅`, client: c, result: 'success' };
-  },
-  () => {
-    const c = pick(clients); const n = Math.floor(Math.random() * 4) + 1;
-    return { agent: 'Missing Doc Tracker Agent', action: `Updated checklist for ${c} → ${n} docs remaining 📋`, client: c, result: n > 2 ? 'warning' : 'info' };
-  },
-  () => {
-    const c = pick(clients);
-    return { agent: 'Follow-up Sender Agent', action: `Sent reminder email to ${c.toLowerCase().replace(' ', '.')}@email.com 📧`, client: c, result: 'info' };
-  },
-  () => {
-    const c = pick(clients); const d = pick(docs);
-    return { agent: 'Doc Classifier Agent', action: `Scanned "${d}" → Auto-classified and indexed ✅`, client: c, result: 'success' };
-  },
+// Pool of 30+ realistic entries
+const ENTRY_POOL: Array<Omit<FeedEntry, 'id' | 'timestamp'>> = [
+  // Doc Classifier — verified
+  { agent: 'Doc Classifier Agent', action: 'Verified W2_2024.pdf for John Smith — employer: Acme Corp, wages detected, confidence 98%', client: 'John Smith', result: 'success' },
+  { agent: 'Doc Classifier Agent', action: 'Verified 1099-NEC_Q4.pdf for Michael Brown — payer: Upwork Global, confidence 96%', client: 'Michael Brown', result: 'success' },
+  { agent: 'Doc Classifier Agent', action: 'Verified 1098_mortgage.pdf for Robert Chen — lender: Wells Fargo Bank, confidence 97%', client: 'Robert Chen', result: 'success' },
+  { agent: 'Doc Classifier Agent', action: 'Verified K-1_partnership.pdf for Sarah Johnson — partnership income fields detected, confidence 95%', client: 'Sarah Johnson', result: 'success' },
+  { agent: 'Doc Classifier Agent', action: 'Verified 1099-INT_2024.pdf for Maria Rodriguez — interest income $1,240 detected, confidence 99%', client: 'Maria Rodriguez', result: 'success' },
+  { agent: 'Doc Classifier Agent', action: 'Verified Schedule_C.pdf for Robert Chen — gross revenue and expense fields extracted, confidence 94%', client: 'Robert Chen', result: 'success' },
+  { agent: 'Doc Classifier Agent', action: 'Verified 1099-DIV_fidelity.pdf for John Smith — ordinary dividends $3,820 detected, confidence 97%', client: 'John Smith', result: 'success' },
+  // Doc Classifier — flagged
+  { agent: 'Doc Classifier Agent', action: 'Wrong year detected in W2_2023_mjbrown.pdf — 2023 document, 2024 required. Flag created.', client: 'Michael Brown', result: 'warning' },
+  { agent: 'Doc Classifier Agent', action: 'Bank statement detected in chase_jan2024.pdf — not required for 2024 filing. Flagged.', client: 'Sarah Johnson', result: 'warning' },
+  { agent: 'Doc Classifier Agent', action: 'Possible incomplete document in w2_pg1_only.pdf — standard W-2 has 2–3 pages. Flagged.', client: 'John Smith', result: 'warning' },
+  { agent: 'Doc Classifier Agent', action: 'Wrong year detected in 1099_2022_rodriguez.pdf — 2022 document, 2024 required. Flag created.', client: 'Maria Rodriguez', result: 'warning' },
+  { agent: 'Doc Classifier Agent', action: 'File size too small (8 KB) for 1099-NEC_rchen.pdf — likely a screenshot. Flagged for review.', client: 'Robert Chen', result: 'warning' },
+  // Duplicate Detector
+  { agent: 'Duplicate Detector Agent', action: 'Blocked duplicate 1099-NEC.pdf from Maria Rodriguez — matches upload from Jan 14, 9:42 AM', client: 'Maria Rodriguez', result: 'warning' },
+  { agent: 'Duplicate Detector Agent', action: 'Blocked duplicate W2_Smith_2024.pdf — identical file already on record from Jan 10', client: 'John Smith', result: 'warning' },
+  { agent: 'Duplicate Detector Agent', action: 'Scanned 1,204 files this session — 5 duplicates blocked, 1,199 accepted ✅', client: 'Michael Brown', result: 'success' },
+  { agent: 'Duplicate Detector Agent', action: 'No duplicates found in batch of 6 files for Sarah Johnson ✅', client: 'Sarah Johnson', result: 'success' },
+  { agent: 'Duplicate Detector Agent', action: 'Blocked duplicate 1098_mortgage.pdf from Robert Chen — same hash as file uploaded Dec 29', client: 'Robert Chen', result: 'warning' },
+  { agent: 'Duplicate Detector Agent', action: 'Scanned all uploaded documents today — 2 duplicates removed across 3 clients ✅', client: 'John Smith', result: 'success' },
+  // Missing Doc Tracker
+  { agent: 'Missing Doc Tracker Agent', action: 'Robert Chen is missing 3 documents — W-2, 1098, Schedule C — follow-up queued', client: 'Robert Chen', result: 'warning' },
+  { agent: 'Missing Doc Tracker Agent', action: 'Michael Brown checklist updated — 4 of 6 documents received, 2 still outstanding', client: 'Michael Brown', result: 'info' },
+  { agent: 'Missing Doc Tracker Agent', action: 'Sarah Johnson submitted final document — all 4 required docs verified ✅', client: 'Sarah Johnson', result: 'success' },
+  { agent: 'Missing Doc Tracker Agent', action: 'Maria Rodriguez is missing K-1 and 1099-DIV — reminder queued for tomorrow', client: 'Maria Rodriguez', result: 'warning' },
+  { agent: 'Missing Doc Tracker Agent', action: 'John Smith checklist complete — all 5 documents received and verified ✅', client: 'John Smith', result: 'success' },
+  { agent: 'Missing Doc Tracker Agent', action: 'Daily checklist scan complete — 3 clients still have outstanding documents', client: 'Robert Chen', result: 'info' },
+  { agent: 'Missing Doc Tracker Agent', action: 'Robert Chen uploaded W-2 — 2 of 4 required docs now received ✅', client: 'Robert Chen', result: 'info' },
+  // Follow-up Sender
+  { agent: 'Follow-up Sender Agent', action: 'Sent missing doc reminder to robert.chen@email.com — "Missing: W-2, 1099-NEC, 1098, Schedule C"', client: 'Robert Chen', result: 'info' },
+  { agent: 'Follow-up Sender Agent', action: 'Reminder email approved by Sean and delivered to maria.rodriguez@email.com ✅', client: 'Maria Rodriguez', result: 'success' },
+  { agent: 'Follow-up Sender Agent', action: 'Sent wrong-year correction notice to john.smith@email.com — W2_2023 flagged', client: 'John Smith', result: 'info' },
+  { agent: 'Follow-up Sender Agent', action: 'Sent duplicate removal notice to michael.brown@email.com — 1 duplicate auto-resolved', client: 'Michael Brown', result: 'info' },
+  { agent: 'Follow-up Sender Agent', action: 'Reminder email approved by Girik and delivered to sarah.johnson@email.com ✅', client: 'Sarah Johnson', result: 'success' },
+  { agent: 'Follow-up Sender Agent', action: '3 scheduled reminders sent this morning — all delivered, 0 bounced ✅', client: 'Michael Brown', result: 'success' },
 ];
 
 const timeAgo = (d: Date) => {
@@ -67,13 +78,25 @@ const AgentActivityFeed: React.FC = () => {
   const [entries, setEntries] = useState<FeedEntry[]>(initialEntries);
   const [, force] = useState(0);
   const counter = useRef(100);
+  const lastIndex = useRef(-1);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const gen = pick(generators)();
-      const newEntry: FeedEntry = { ...gen, id: String(counter.current++), timestamp: new Date() };
+      // Avoid repeating the same entry twice in a row
+      let idx: number;
+      do {
+        idx = Math.floor(Math.random() * ENTRY_POOL.length);
+      } while (idx === lastIndex.current);
+      lastIndex.current = idx;
+
+      const newEntry: FeedEntry = {
+        ...ENTRY_POOL[idx],
+        id: String(counter.current++),
+        timestamp: new Date(),
+      };
       setEntries(prev => [newEntry, ...prev].slice(0, 12));
-    }, 4000);
+    }, 8000);
+
     const tick = setInterval(() => force(x => x + 1), 1000);
     return () => { clearInterval(interval); clearInterval(tick); };
   }, []);

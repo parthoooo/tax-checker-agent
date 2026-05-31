@@ -1,5 +1,6 @@
 import { supabase as typedSupabase } from './supabase';
 import type { Database } from './database.types';
+import { generateInputSheetData } from './aiSimulation';
 
 // Loosely-typed handle for insert/update call sites. RLS enforces safety.
 const supabase: any = typedSupabase;
@@ -275,9 +276,9 @@ export async function verifyInputSheetEntry(id: string): Promise<void> {
 export async function populateInputSheet(
   clientId: string,
   uploads: DocUpload[],
-  taxYear = '2024'
+  taxYear = '2024',
+  clientName = 'Client',
 ): Promise<void> {
-  // Remove existing unverified AI-populated entries before re-populating
   await supabase
     .from('input_sheet_entries')
     .delete()
@@ -286,58 +287,24 @@ export async function populateInputSheet(
     .eq('ai_populated', true)
     .eq('verified', false);
 
-  const entries: Database['public']['Tables']['input_sheet_entries']['Insert'][] = [];
+  const filenames = uploads.map(u => u.file_name);
+  const generated = generateInputSheetData(clientName, filenames);
 
-  for (const upload of uploads) {
-    const fn = upload.file_name.toLowerCase();
-    if (fn.includes('w2') || fn.includes('w-2')) {
-      entries.push(
-        { client_id: clientId, tax_year: taxYear, section: 'W-2', field_name: 'Employer Name',       field_value: 'Employer (from W-2)', ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: 'W-2', field_name: 'Wages (Box 1)',        field_value: null,                  ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: 'W-2', field_name: 'Federal Tax Withheld', field_value: null,                  ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: 'W-2', field_name: 'State Wages',          field_value: null,                  ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: 'W-2', field_name: 'State Tax Withheld',   field_value: null,                  ai_populated: true, verified: false }
-      );
-    }
-    if (fn.includes('1099-nec') || fn.includes('1099nec')) {
-      entries.push(
-        { client_id: clientId, tax_year: taxYear, section: '1099-NEC', field_name: 'Payer Name',          field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: '1099-NEC', field_name: 'Nonemployee Comp.',    field_value: null, ai_populated: true, verified: false }
-      );
-    }
-    if (fn.includes('1099-int') || fn.includes('1099int')) {
-      entries.push(
-        { client_id: clientId, tax_year: taxYear, section: '1099-INT', field_name: 'Payer Name',         field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: '1099-INT', field_name: 'Interest Income',    field_value: null, ai_populated: true, verified: false }
-      );
-    }
-    if (fn.includes('1099-div') || fn.includes('1099div')) {
-      entries.push(
-        { client_id: clientId, tax_year: taxYear, section: '1099-DIV', field_name: 'Payer Name',              field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: '1099-DIV', field_name: 'Ordinary Dividends',      field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: '1099-DIV', field_name: 'Qualified Dividends',     field_value: null, ai_populated: true, verified: false }
-      );
-    }
-    if (fn.includes('1098')) {
-      entries.push(
-        { client_id: clientId, tax_year: taxYear, section: '1098', field_name: 'Lender Name',           field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: '1098', field_name: 'Mortgage Interest',     field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: '1098', field_name: 'Outstanding Principal', field_value: null, ai_populated: true, verified: false }
-      );
-    }
-    if (fn.includes('k1') || fn.includes('k-1')) {
-      entries.push(
-        { client_id: clientId, tax_year: taxYear, section: 'K-1', field_name: 'Partnership Name',      field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: 'K-1', field_name: 'Ordinary Income',       field_value: null, ai_populated: true, verified: false },
-        { client_id: clientId, tax_year: taxYear, section: 'K-1', field_name: 'Capital Account End',   field_value: null, ai_populated: true, verified: false }
-      );
-    }
-  }
+  if (generated.length === 0) return;
 
-  if (entries.length > 0) {
-    const { error } = await supabase.from('input_sheet_entries').insert(entries);
-    if (error) throw error;
-  }
+  const entries: Database['public']['Tables']['input_sheet_entries']['Insert'][] =
+    generated.map(f => ({
+      client_id:    clientId,
+      tax_year:     taxYear,
+      section:      f.section,
+      field_name:   f.field_name,
+      field_value:  f.field_value,
+      ai_populated: true,
+      verified:     false,
+    }));
+
+  const { error } = await supabase.from('input_sheet_entries').insert(entries);
+  if (error) throw error;
 }
 
 // ── Time Entries ───────────────────────────────────────────────────────────

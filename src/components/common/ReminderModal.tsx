@@ -1,9 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveReminder, logActivity } from '@/lib/db';
+import { generateEmailDraft } from '@/lib/aiSimulation';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Props {
@@ -12,20 +14,45 @@ interface Props {
   clientId?: string;
   clientName?: string;
   clientEmail?: string;
+  missingDocs?: string[];
 }
 
-const ReminderModal: React.FC<Props> = ({ open, onClose, clientId, clientName, clientEmail }) => {
+const ReminderModal: React.FC<Props> = ({
+  open,
+  onClose,
+  clientId,
+  clientName,
+  clientEmail,
+  missingDocs = [],
+}) => {
   const { user, session } = useAuth();
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [body, setBody] = useState('');
+  const [drafting, setDrafting] = useState(false);
 
-  const defaultBody = clientName
-    ? `Hi ${clientName.split(' ')[0]},\n\nThis is a friendly reminder that we still need a few documents to complete your 2024 tax filing.\n\nPlease log in to your portal at brodermansoor.buildyourai.consulting to upload them at your convenience.\n\nThank you,\nBroder-Mansoor & Associates`
-    : '';
+  const draft = async () => {
+    if (!clientName) return;
+    setDrafting(true);
+    try {
+      const text = await generateEmailDraft(
+        clientName,
+        missingDocs,
+        user?.name ?? 'Your Tax Preparer',
+      );
+      setBody(text);
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && clientName) {
+      setBody('');
+      draft();
+    }
+  }, [open, clientName]);
 
   const handleSend = async () => {
-    const body    = bodyRef.current?.value ?? defaultBody;
     const subject = 'Action Required: Missing Tax Documents';
-
     try {
       if (clientId && clientEmail) {
         await saveReminder({
@@ -57,16 +84,42 @@ const ReminderModal: React.FC<Props> = ({ open, onClose, clientId, clientName, c
         <DialogHeader>
           <DialogTitle>Send Reminder Email</DialogTitle>
         </DialogHeader>
+
         {clientName && (
           <div className="space-y-3">
             <div className="text-sm"><span className="text-gray-500">To:</span> <span className="font-medium">{clientEmail}</span></div>
             <div className="text-sm"><span className="text-gray-500">Subject:</span> <span className="font-medium">Action Required: Missing Tax Documents</span></div>
-            <Textarea ref={bodyRef} rows={8} defaultValue={defaultBody} className="text-sm" />
+
+            {drafting ? (
+              <div className="flex items-center gap-2 py-6 justify-center text-blue-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Drafting email…</span>
+              </div>
+            ) : (
+              <Textarea
+                rows={9}
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                className="text-sm"
+              />
+            )}
           </div>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSend}>✅ Send Email</Button>
+
+        <DialogFooter className="flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={draft}
+            disabled={drafting || !clientName}
+            className="gap-1.5"
+          >
+            {drafting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '🔄'}
+            Regenerate
+          </Button>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={handleSend} disabled={drafting || !body}>✅ Send Email</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
