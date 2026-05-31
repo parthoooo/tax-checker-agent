@@ -140,7 +140,12 @@ export interface Database {
       };
       ai_flags: {
         Row: AiFlagRow;
-        Insert: Omit<AiFlagRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Insert: Omit<AiFlagRow, 'id' | 'created_at' | 'resolved' | 'resolved_at'> & {
+          id?: string;
+          created_at?: string;
+          resolved?: boolean;
+          resolved_at?: string | null;
+        };
         Update: Partial<Omit<AiFlagRow, 'id' | 'created_at'> & { id?: string; created_at?: string }>;
         Relationships: [];
       };
@@ -164,7 +169,13 @@ export interface Database {
       };
       email_drafts: {
         Row: EmailDraftRow;
-        Insert: Omit<EmailDraftRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Insert: Omit<EmailDraftRow, 'id' | 'created_at' | 'created_by' | 'sent_at' | 'from_label'> & {
+          id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          sent_at?: string | null;
+          from_label?: string | null;
+        };
         Update: Partial<EmailDraftRow>;
         Relationships: [];
       };

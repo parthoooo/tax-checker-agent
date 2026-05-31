@@ -314,8 +314,7 @@ const SentCard: React.FC<{ draft: EmailDraft }> = ({ draft }) => (
           </div>
           <p className="text-sm text-gray-700 mt-0.5">{draft.subject}</p>
           <p className="text-xs text-gray-400 mt-1">
-            Approved by {draft.approved_by ?? 'Staff'} ·{' '}
-            {draft.approved_at ? new Date(draft.approved_at).toLocaleDateString() : ''}
+            Sent {draft.sent_at ? new Date(draft.sent_at).toLocaleDateString() : ''}
           </p>
         </div>
       </div>
