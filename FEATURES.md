@@ -107,7 +107,7 @@ Living document of all features currently shipped in this app. Update this file 
 - Edge function `seed-demo-users` — one-shot seeding of the 4 demo auth users and linking John's client row to his auth user
 
 ## Demo Data Seeding
-- **Load Demo Data** button on `/dashboard` runs `seedAllDemoData` which ensures **20 demo clients** exist (6 hand-crafted scenarios + 14 procedurally generated) and fully populates the app for each
+- **Load Demo Data** button on `/dashboard` AND `/clients` runs `seedAllDemoData` which ensures **20 demo clients** exist (6 hand-crafted scenarios + 14 procedurally generated) and fully populates the app for each
 - Per client the seeder produces: 5–7 document uploads (verified / flagged / rejected mix), 2–4 AI flags across all four flag types with some pre-resolved (so the Flags page Resolved tab is populated), 3–5 email drafts (mix of pending and historical sent so Email Queue → Sent is populated), 15–22 activity_log entries across the four named AI agents + staff + client actors, multi-session `time_entries` (3–4 sessions per client) and 1–2 historical `reminders`
 - Per-client `documents_submitted` / `issues` / `last_activity` are recomputed from the seeded data so dashboard counters stay accurate
 - Seeder is idempotent — missing extra clients are inserted, and per-client data is cleared and re-seeded on each run
