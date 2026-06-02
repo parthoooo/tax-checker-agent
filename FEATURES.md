@@ -106,6 +106,13 @@ Living document of all features currently shipped in this app. Update this file 
 - RLS posture: admin full access, clients read/insert their own rows; demo-grade `authenticated` read policies in place on several tables (to be tightened before production)
 - Edge function `seed-demo-users` — one-shot seeding of the 4 demo auth users and linking John's client row to his auth user
 
+## Demo Data Seeding
+- **Load Demo Data** button on `/dashboard` runs `seedAllDemoData` which fully populates the app for all 6 demo clients (John Smith, Michael Brown, Sarah Johnson, Robert Chen, Maria Rodriguez, David Kim)
+- Per client the seeder produces: 5–7 document uploads (verified / flagged / rejected mix), 2–4 AI flags across all four flag types with some pre-resolved (so the Flags page Resolved tab is populated), 1–3 email drafts (mix of pending and historical sent so Email Queue → Sent is populated), 12–20 activity_log entries across the four named AI agents + staff + client actors, multi-session `time_entries` (2–3 sessions per client) and 1–2 historical `reminders`
+- Per-client `documents_submitted` / `issues` / `last_activity` are recomputed from the seeded data so dashboard counters stay accurate
+- Seeder is idempotent — re-running clears the previous demo rows for each client first
+- **Seed Demo Emails** button on `/email-queue` adds 2 pending + 1 sent AI-drafted email per active client (populates both Pending and Sent tabs)
+
 ## Tech / UI
 - React 18 + Vite + TypeScript + Tailwind + shadcn/ui
 - React Router v6 with nested layout routes
