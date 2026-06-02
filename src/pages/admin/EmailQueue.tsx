@@ -83,6 +83,7 @@ const EmailQueue: React.FC = () => {
             subject:    'Welcome to the 2024 Tax Season',
             body:       sentBody,
             status:     'sent',
+            sent_at:    new Date(Date.now() - 1000 * 60 * 60 * 24 * (i + 1)).toISOString(),
           });
         })
       );
