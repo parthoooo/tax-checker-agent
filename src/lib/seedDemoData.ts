@@ -505,6 +505,142 @@ const SCENARIOS: Record<string, Scenario> = {
   },
 };
 
+// ── Extra clients (procedurally seeded) ──────────────────────────────────────
+
+const EXTRA_CLIENTS: Array<{ name: string; email: string; phone: string; assigned_staff: string; status: string }> = [
+  { name: 'Emily Davis',      email: 'emily.davis@email.com',      phone: '+1 (415) 555-0142', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'James Wilson',     email: 'james.wilson@email.com',     phone: '+1 (415) 555-0188', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Olivia Martinez',  email: 'olivia.martinez@email.com',  phone: '+1 (646) 555-0119', assigned_staff: 'Sean Mansoor', status: 'overdue' },
+  { name: 'William Anderson', email: 'william.anderson@email.com', phone: '+1 (646) 555-0201', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Sophia Thomas',    email: 'sophia.thomas@email.com',    phone: '+1 (212) 555-0177', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'Benjamin Taylor',  email: 'benjamin.taylor@email.com',  phone: '+1 (212) 555-0156', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Ava Moore',        email: 'ava.moore@email.com',        phone: '+1 (929) 555-0133', assigned_staff: 'Sean Mansoor', status: 'overdue' },
+  { name: 'Lucas Jackson',    email: 'lucas.jackson@email.com',    phone: '+1 (929) 555-0192', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Mia White',        email: 'mia.white@email.com',        phone: '+1 (347) 555-0124', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'Henry Harris',     email: 'henry.harris@email.com',     phone: '+1 (347) 555-0167', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Charlotte Martin', email: 'charlotte.martin@email.com', phone: '+1 (718) 555-0145', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'Daniel Thompson',  email: 'daniel.thompson@email.com',  phone: '+1 (718) 555-0198', assigned_staff: 'Girik Patel',  status: 'overdue' },
+  { name: 'Amelia Garcia',    email: 'amelia.garcia@email.com',    phone: '+1 (917) 555-0152', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'Matthew Lee',      email: 'matthew.lee@email.com',      phone: '+1 (917) 555-0178', assigned_staff: 'Girik Patel',  status: 'active' },
+];
+
+const PREPARERS = ['Sean Mansoor', 'Girik Patel'];
+const AGENTS = ['Doc Classifier Agent', 'Duplicate Detector Agent', 'Missing Doc Tracker Agent', 'Follow-up Sender Agent'];
+
+function pick<T>(arr: T[], seed: number): T {
+  return arr[seed % arr.length];
+}
+
+function buildProceduralScenario(name: string, seed: number): Scenario {
+  const preparer = pick(PREPARERS, seed);
+  const firstName = name.split(' ')[0];
+  const lastName = name.split(' ')[1] ?? 'Client';
+  const slug = lastName.toLowerCase();
+
+  const requirements: RequirementDef[] = [
+    { name: 'W-2',             doc_type: 'w2'       },
+    { name: '1099-INT',        doc_type: '1099-int' },
+    { name: '1099-NEC',        doc_type: '1099-nec' },
+    { name: '1098 Mortgage',   doc_type: '1098'     },
+    { name: '1099-DIV',        doc_type: '1099-div' },
+  ];
+
+  const uploads: UploadDef[] = [
+    { file_name: `W2_2024_${slug}.pdf`,            ai_status: 'verified', file_size: 220000 + seed * 1000, mime_type: 'application/pdf' },
+    { file_name: `1099-INT_2024_${slug}.pdf`,      ai_status: 'verified', file_size: 130000, mime_type: 'application/pdf' },
+    { file_name: `1099-NEC_2024_${slug}.pdf`,      ai_status: seed % 3 === 0 ? 'flagged' : 'verified', file_size: 125000, mime_type: 'application/pdf' },
+    { file_name: `1098_mortgage_2024_${slug}.pdf`, ai_status: 'verified', file_size: 175000, mime_type: 'application/pdf' },
+    { file_name: `old_w2_2023_${slug}.pdf`,        ai_status: 'flagged',  file_size: 200000, mime_type: 'application/pdf' },
+    { file_name: `random_${slug}.jpg`,             ai_status: 'rejected', file_size: 70000,  mime_type: 'image/jpeg' },
+  ];
+
+  const flags: FlagDef[] = [
+    { flag_type: 'wrong-year', severity: 'HIGH',
+      description: `old_w2_2023_${slug}.pdf is for tax year 2023, not 2024.`,
+      upload_index: 4, detected_by: 'Doc Classifier Agent' },
+    { flag_type: 'unexpected', severity: 'LOW',
+      description: `random_${slug}.jpg — not recognized as a tax form.`,
+      upload_index: 5, detected_by: 'Doc Classifier Agent',
+      resolved: true, resolvedMinutesAgo: 90 + seed * 5 },
+    ...(seed % 3 === 0 ? [{
+      flag_type: 'duplicate' as const, severity: 'MEDIUM' as const,
+      description: `Duplicate 1099-NEC upload for ${name}.`,
+      upload_index: 2, detected_by: 'Duplicate Detector Agent',
+    }] : []),
+    ...(seed % 2 === 0 ? [{
+      flag_type: 'missing' as const, severity: 'MEDIUM' as const,
+      description: `${name} still missing 1099-DIV — reminder queued.`,
+      upload_index: null, detected_by: 'Missing Doc Tracker Agent',
+    }] : []),
+  ];
+
+  const emails: EmailDef[] = [
+    { subject: `Action Required: Wrong Tax Year — W-2`,
+      missingDocs: ['W-2 (2024 re-upload)'], preparer, status: 'pending' },
+    { subject: `Reminder: 1099-DIV still outstanding`,
+      missingDocs: ['1099-DIV'], preparer, status: 'pending' },
+    { subject: `Welcome to the 2024 Tax Season`,
+      missingDocs: ['W-2', '1099-INT', '1099-NEC', '1098', '1099-DIV'],
+      preparer, status: 'sent', sentMinutesAgo: 1440 * (4 + (seed % 4)) },
+    { subject: `Reminder — 2024 Tax Filing Documents`,
+      missingDocs: ['1099-DIV'], preparer, status: 'sent', sentMinutesAgo: 1440 * (1 + (seed % 3)) },
+    { subject: `Thank you — documents received`,
+      missingDocs: [], preparer, status: 'sent', sentMinutesAgo: 60 * (8 + (seed % 12)) },
+  ];
+
+  const reminders: ReminderDef[] = [
+    { subject: 'Welcome — Secure upload link inside',
+      body: `Hi ${firstName}, here is your secure upload portal link.`,
+      minutesAgo: 1440 * (5 + (seed % 4)) },
+    { subject: 'Tax Filing Reminder',
+      body: `Hi ${firstName}, your filing window is approaching — please upload any remaining documents.`,
+      minutesAgo: 1440 * (1 + (seed % 3)) },
+  ];
+
+  const timeSessions: TimeSessionDef[] = [
+    { hours: 1.2, hoursAgoStart: 5  + (seed % 6),  note: `Initial document review — ${preparer}` },
+    { hours: 0.5, hoursAgoStart: 28 + (seed % 8),  note: `Flag triage — ${preparer}` },
+    { hours: 0.75, hoursAgoStart: 52 + (seed % 10), note: `Input sheet review — ${preparer}` },
+    { hours: 0.4, hoursAgoStart: 76 + (seed % 12), note: `Client follow-up — ${preparer}` },
+  ];
+
+  // Rich activity log: ~22 entries spread across the past week
+  const activities: ActivityDef[] = [
+    clientLine(name, 'Opened secure upload portal',                                                       1440 * 6),
+    agentLine('Doc Classifier Agent', `Created document checklist for ${name} (5 required)`,              1440 * 6 - 5),
+    staffLine(preparer, `Reviewed checklist for ${name}`,                                                 1440 * 6 - 30),
+    clientLine(name, `Uploaded W2_2024_${slug}.pdf via magic link portal`,                                1440 * 5),
+    agentLine('Doc Classifier Agent', `Verified W2_2024_${slug}.pdf — employer detected, confidence 98%`, 1440 * 5 - 2),
+    clientLine(name, `Uploaded 1099-INT_2024_${slug}.pdf`,                                                1440 * 4),
+    agentLine('Doc Classifier Agent', `Verified 1099-INT_2024_${slug}.pdf — interest income, 96%`,        1440 * 4 - 1),
+    clientLine(name, `Uploaded 1099-NEC_2024_${slug}.pdf`,                                                1440 * 3),
+    agentLine('Doc Classifier Agent', `Verified 1099-NEC_2024_${slug}.pdf — payer detected, 95%`,         1440 * 3 - 1),
+    clientLine(name, `Uploaded 1098_mortgage_2024_${slug}.pdf`,                                           1440 * 2 + 600),
+    agentLine('Doc Classifier Agent', `Verified 1098_mortgage_2024_${slug}.pdf — Chase, confidence 97%`,  1440 * 2 + 599),
+    clientLine(name, `Uploaded old_w2_2023_${slug}.pdf`,                                                  1440 * 2),
+    agentLine('Doc Classifier Agent', `Wrong year on old_w2_2023_${slug}.pdf — 2023 detected, 2024 needed`, 1440 * 2 - 2),
+    agentLine('Follow-up Sender Agent', `Drafted wrong-year correction email for ${name}`,                1440 * 2 - 3),
+    staffLine(preparer, `Sent reminder email to ${name.toLowerCase().replace(' ', '.')}@email.com`,       1440 + 200),
+    clientLine(name, `Uploaded random_${slug}.jpg`,                                                       1440),
+    agentLine('Doc Classifier Agent', `random_${slug}.jpg rejected — not a recognized tax form`,          1439),
+    staffLine(preparer, `Marked unexpected-file flag as resolved`,                                        720),
+    agentLine('Duplicate Detector Agent', `Scanned uploads for ${name} — duplicates: ${seed % 3 === 0 ? '1 detected' : 'none'}`, 600),
+    agentLine('Missing Doc Tracker Agent', `${name} still missing 1099-DIV — reminder queued`,            480),
+    agentLine('Follow-up Sender Agent', `Drafted outstanding-docs reminder email for ${name}`,            300),
+    staffLine(preparer, `Reviewed input sheet draft for ${name}`,                                         180),
+    agentLine(pick(AGENTS, seed + 1), `Re-scanned ${name} checklist — ${5 - (seed % 3)} of 5 verified`,   90),
+  ];
+
+  const inputFileNames = [
+    `W2_2024_${slug}.pdf`,
+    `1099-INT_2024_${slug}.pdf`,
+    `1099-NEC_2024_${slug}.pdf`,
+    `1098_mortgage_2024_${slug}.pdf`,
+  ];
+
+  return { requirements, uploads, flags, emails, reminders, timeSessions, activities, inputFileNames };
+}
+
 // ── Main seeder ──────────────────────────────────────────────────────────────
 
 export async function seedAllDemoData(onProgress?: (msg: string) => void): Promise<void> {
@@ -512,6 +648,25 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
   const check = (label: string, error: unknown) => {
     if (error) throw new Error(`${label}: ${(error as any).message ?? JSON.stringify(error)}`);
   };
+
+  // 0. Ensure extra clients exist (idempotent — insert any missing by name)
+  log('Ensuring 20 demo clients exist...');
+  const { data: existingClients } = await supabase.from('clients').select('name');
+  const existingNames = new Set((existingClients ?? []).map((c: any) => c.name));
+  const toInsert = EXTRA_CLIENTS.filter(c => !existingNames.has(c.name)).map(c => ({
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    assigned_staff: c.assigned_staff,
+    status: c.status,
+    documents_required: 5,
+    documents_submitted: 0,
+    issues: 0,
+  }));
+  if (toInsert.length > 0) {
+    const { error: insErr } = await supabase.from('clients').insert(toInsert);
+    check('insert extra clients', insErr);
+  }
 
   log('Fetching clients...');
   const { data: clients, error: clientErr } = await supabase
@@ -521,9 +676,9 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     throw new Error('No clients found in database. Make sure the seed.sql has been applied.');
   }
 
+  let seedIdx = 0;
   for (const client of clients) {
-    const scenario = SCENARIOS[client.name];
-    if (!scenario) continue;
+    const scenario = SCENARIOS[client.name] ?? buildProceduralScenario(client.name, ++seedIdx);
 
     log(`Seeding ${client.name}...`);
     const now = Date.now();
