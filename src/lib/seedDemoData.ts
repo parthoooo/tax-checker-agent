@@ -836,7 +836,4 @@ async function seedOneClient(
       ).toISOString(),
     }).eq('id', client.id);
     check(`update client counts (${client.name})`, updateErr);
-  }
-
-  log('Done ✅');
 }
