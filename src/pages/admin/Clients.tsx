@@ -15,6 +15,7 @@ import ReminderModal from '@/components/common/ReminderModal';
 import { toast } from 'sonner';
 import { fetchClients } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
+import { seedAllDemoData } from '@/lib/seedDemoData';
 import type { Database } from '@/lib/database.types';
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -26,6 +27,8 @@ const Clients: React.FC = () => {
   const [filter, setFilter]     = useState<'all' | 'active' | 'overdue' | 'complete'>('all');
   const [addOpen, setAddOpen]   = useState(false);
   const [reminder, setReminder] = useState<Client | null>(null);
+  const [seeding, setSeeding]   = useState(false);
+  const [seedProgress, setSeedProgress] = useState('');
 
   // Add-client form state
   const [newName, setNewName]   = useState('');
@@ -39,6 +42,24 @@ const Clients: React.FC = () => {
       .catch(() => toast.error('Failed to load clients'))
       .finally(() => setLoading(false));
   }, []);
+
+  const reload = () =>
+    fetchClients().then(setClients).catch(() => toast.error('Failed to load clients'));
+
+  const handleSeedDemo = async () => {
+    setSeeding(true);
+    setSeedProgress('Starting...');
+    try {
+      await seedAllDemoData(msg => setSeedProgress(msg));
+      await reload();
+      toast.success('🎬 Demo data loaded!', { description: 'All 20 clients, documents, flags, emails, activity logs and time entries populated.' });
+    } catch (err: any) {
+      toast.error('Seeding failed', { description: err?.message });
+    } finally {
+      setSeeding(false);
+      setSeedProgress('');
+    }
+  };
 
   const filtered = clients.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
@@ -70,9 +91,20 @@ const Clients: React.FC = () => {
         title="Clients"
         subtitle={`${clients.length} clients this tax season`}
         actions={
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Add Client
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleSeedDemo}
+              disabled={seeding}
+              className="gap-2"
+            >
+              {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🎬</span>}
+              {seeding ? (seedProgress || 'Loading…') : 'Load Demo Data'}
+            </Button>
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Add Client
+            </Button>
+          </div>
         }
       />
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">

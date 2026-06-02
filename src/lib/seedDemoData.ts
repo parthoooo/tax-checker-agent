@@ -689,6 +689,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
   }
 
   let seedIdx = 0;
+  const failures: string[] = [];
   for (const client of clients) {
     const scenario = SCENARIOS[client.name] ?? buildProceduralScenario(client.name, ++seedIdx);
 
@@ -699,9 +700,13 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
       await seedOneClient(client, scenario, now, check);
     } catch (err: any) {
       console.error(`[seed] Failed for ${client.name}:`, err?.message ?? err);
+      failures.push(`${client.name}: ${err?.message ?? err}`);
     }
   }
 
+  if (failures.length > 0) {
+    throw new Error(`Seeded with ${failures.length} failure(s). First: ${failures[0]}`);
+  }
   log('Done ✅');
 }
 
