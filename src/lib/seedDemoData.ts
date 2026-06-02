@@ -7,7 +7,7 @@
  */
 
 import { supabase as typedSupabase } from './supabase';
-import { generateInputSheetData, generateEmailDraft } from './aiSimulation';
+import { generateEmailDraft } from './aiSimulation';
 
 const supabase: any = typedSupabase;
 
@@ -524,6 +524,17 @@ const EXTRA_CLIENTS: Array<{ name: string; email: string; phone: string; assigne
   { name: 'Matthew Lee',      email: 'matthew.lee@email.com',      phone: '+1 (917) 555-0178', assigned_staff: 'Girik Patel',  status: 'active' },
 ];
 
+// Hand-written scenario clients — must also be auto-created if missing,
+// otherwise only whoever is in seed.sql ever gets seeded.
+const SCENARIO_CLIENTS: Array<{ name: string; email: string; phone: string; assigned_staff: string; status: string }> = [
+  { name: 'John Smith',       email: 'john.smith@email.com',       phone: '+1 (212) 555-0101', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'Michael Brown',    email: 'michael.brown@email.com',    phone: '+1 (212) 555-0102', assigned_staff: 'Girik Patel',  status: 'overdue' },
+  { name: 'Sarah Johnson',    email: 'sarah.johnson@email.com',    phone: '+1 (415) 555-0103', assigned_staff: 'Sean Mansoor', status: 'complete' },
+  { name: 'Robert Chen',      email: 'robert.chen@email.com',      phone: '+1 (415) 555-0104', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Maria Rodriguez',  email: 'maria.rodriguez@email.com',  phone: '+1 (646) 555-0105', assigned_staff: 'Sean Mansoor', status: 'complete' },
+  { name: 'David Kim',        email: 'david.kim@email.com',        phone: '+1 (646) 555-0106', assigned_staff: 'Girik Patel',  status: 'active' },
+];
+
 const PREPARERS = ['Sean Mansoor', 'Girik Patel'];
 const AGENTS = ['Doc Classifier Agent', 'Duplicate Detector Agent', 'Missing Doc Tracker Agent', 'Follow-up Sender Agent'];
 
@@ -649,11 +660,12 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     if (error) throw new Error(`${label}: ${(error as any).message ?? JSON.stringify(error)}`);
   };
 
-  // 0. Ensure extra clients exist (idempotent — insert any missing by name)
+  // 0. Ensure all 20 demo clients exist (idempotent — insert any missing by name)
   log('Ensuring 20 demo clients exist...');
   const { data: existingClients } = await supabase.from('clients').select('name');
   const existingNames = new Set((existingClients ?? []).map((c: any) => c.name));
-  const toInsert = EXTRA_CLIENTS.filter(c => !existingNames.has(c.name)).map(c => ({
+  const allDemoClients = [...SCENARIO_CLIENTS, ...EXTRA_CLIENTS];
+  const toInsert = allDemoClients.filter(c => !existingNames.has(c.name)).map(c => ({
     name: c.name,
     email: c.email,
     phone: c.phone,
@@ -665,7 +677,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
   }));
   if (toInsert.length > 0) {
     const { error: insErr } = await supabase.from('clients').insert(toInsert);
-    check('insert extra clients', insErr);
+    check('insert demo clients', insErr);
   }
 
   log('Fetching clients...');
@@ -683,12 +695,28 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     log(`Seeding ${client.name}...`);
     const now = Date.now();
 
+    try {
+      await seedOneClient(client, scenario, now, check);
+    } catch (err: any) {
+      console.error(`[seed] Failed for ${client.name}:`, err?.message ?? err);
+    }
+  }
+
+  log('Done ✅');
+}
+
+async function seedOneClient(
+  client: any,
+  scenario: Scenario,
+  now: number,
+  check: (label: string, error: unknown) => void,
+): Promise<void> {
+
     // 1. Clear existing seeded data
     await Promise.all([
       supabase.from('document_uploads').delete().eq('client_id', client.id),
       supabase.from('ai_flags').delete().eq('client_id', client.id),
       supabase.from('email_drafts').delete().eq('client_id', client.id),
-      supabase.from('input_sheet_entries').delete().eq('client_id', client.id),
       supabase.from('activity_log').delete().eq('client_id', client.id),
       supabase.from('time_entries').delete().eq('client_id', client.id),
       supabase.from('reminders').delete().eq('client_id', client.id),
@@ -770,23 +798,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     const { error: actErr } = await supabase.from('activity_log').insert(activityInserts);
     check(`insert activity (${client.name})`, actErr);
 
-    // 7. Input sheet entries
-    const fields = generateInputSheetData(client.name, scenario.inputFileNames);
-    if (fields.length > 0) {
-      const inputInserts = fields.map(f => ({
-        client_id: client.id,
-        tax_year: TAX_YEAR,
-        section: f.section,
-        field_name: f.field_name,
-        field_value: f.field_value,
-        ai_populated: true,
-        verified: client.name === 'Sarah Johnson' || client.name === 'Maria Rodriguez',
-      }));
-      const { error: inputErr } = await supabase.from('input_sheet_entries').insert(inputInserts);
-      check(`insert input sheet (${client.name})`, inputErr);
-    }
-
-    // 8. Time entries (multiple sessions)
+    // 7. Time entries (multiple sessions)
     const timeInserts = scenario.timeSessions.map(s => {
       const started = new Date(now - s.hoursAgoStart * 3600000);
       const ended   = new Date(started.getTime() + s.hours * 3600000);
@@ -824,7 +836,4 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
       ).toISOString(),
     }).eq('id', client.id);
     check(`update client counts (${client.name})`, updateErr);
-  }
-
-  log('Done ✅');
 }
