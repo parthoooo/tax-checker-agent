@@ -63,9 +63,32 @@ const EmailQueue: React.FC = () => {
             body,
             status:     'pending',
           });
+          // Also a second pending draft + a historical "sent" draft so the
+          // Sent tab is populated for demos.
+          const altScenario = DEMO_SCENARIOS[(i + 1) % DEMO_SCENARIOS.length];
+          const altBody = await generateEmailDraft(client.name, altScenario.missingDocs, altScenario.preparer);
+          await createEmailDraft({
+            client_id:  client.id,
+            to_email:   client.email,
+            from_label: altScenario.preparer,
+            subject:    'Follow-up: Outstanding Tax Documents',
+            body:       altBody,
+            status:     'pending',
+          });
+          const sentBody = await generateEmailDraft(client.name, scenario.missingDocs, scenario.preparer);
+          await createEmailDraft({
+            client_id:  client.id,
+            to_email:   client.email,
+            from_label: scenario.preparer,
+            subject:    'Welcome to the 2024 Tax Season',
+            body:       sentBody,
+            status:     'sent',
+          });
         })
       );
-      toast.success('Demo emails generated', { description: `${active.length} AI-drafted emails added to the queue` });
+      toast.success('Demo emails generated', {
+        description: `${active.length * 3} AI-drafted emails added (pending + sent)`,
+      });
       await load();
     } catch (err: any) {
       toast.error('Failed to seed demo emails', { description: err?.message });
