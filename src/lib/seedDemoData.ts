@@ -699,7 +699,6 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
       supabase.from('document_uploads').delete().eq('client_id', client.id),
       supabase.from('ai_flags').delete().eq('client_id', client.id),
       supabase.from('email_drafts').delete().eq('client_id', client.id),
-      supabase.from('input_sheet_entries').delete().eq('client_id', client.id),
       supabase.from('activity_log').delete().eq('client_id', client.id),
       supabase.from('time_entries').delete().eq('client_id', client.id),
       supabase.from('reminders').delete().eq('client_id', client.id),
@@ -781,23 +780,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     const { error: actErr } = await supabase.from('activity_log').insert(activityInserts);
     check(`insert activity (${client.name})`, actErr);
 
-    // 7. Input sheet entries
-    const fields = generateInputSheetData(client.name, scenario.inputFileNames);
-    if (fields.length > 0) {
-      const inputInserts = fields.map(f => ({
-        client_id: client.id,
-        tax_year: TAX_YEAR,
-        section: f.section,
-        field_name: f.field_name,
-        field_value: f.field_value,
-        ai_populated: true,
-        verified: client.name === 'Sarah Johnson' || client.name === 'Maria Rodriguez',
-      }));
-      const { error: inputErr } = await supabase.from('input_sheet_entries').insert(inputInserts);
-      check(`insert input sheet (${client.name})`, inputErr);
-    }
-
-    // 8. Time entries (multiple sessions)
+    // 7. Time entries (multiple sessions)
     const timeInserts = scenario.timeSessions.map(s => {
       const started = new Date(now - s.hoursAgoStart * 3600000);
       const ended   = new Date(started.getTime() + s.hours * 3600000);
