@@ -660,11 +660,12 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
     if (error) throw new Error(`${label}: ${(error as any).message ?? JSON.stringify(error)}`);
   };
 
-  // 0. Ensure extra clients exist (idempotent — insert any missing by name)
+  // 0. Ensure all 20 demo clients exist (idempotent — insert any missing by name)
   log('Ensuring 20 demo clients exist...');
   const { data: existingClients } = await supabase.from('clients').select('name');
   const existingNames = new Set((existingClients ?? []).map((c: any) => c.name));
-  const toInsert = EXTRA_CLIENTS.filter(c => !existingNames.has(c.name)).map(c => ({
+  const allDemoClients = [...SCENARIO_CLIENTS, ...EXTRA_CLIENTS];
+  const toInsert = allDemoClients.filter(c => !existingNames.has(c.name)).map(c => ({
     name: c.name,
     email: c.email,
     phone: c.phone,
@@ -676,7 +677,7 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
   }));
   if (toInsert.length > 0) {
     const { error: insErr } = await supabase.from('clients').insert(toInsert);
-    check('insert extra clients', insErr);
+    check('insert demo clients', insErr);
   }
 
   log('Fetching clients...');
@@ -693,6 +694,23 @@ export async function seedAllDemoData(onProgress?: (msg: string) => void): Promi
 
     log(`Seeding ${client.name}...`);
     const now = Date.now();
+
+    try {
+      await seedOneClient(client, scenario, now, check);
+    } catch (err: any) {
+      console.error(`[seed] Failed for ${client.name}:`, err?.message ?? err);
+    }
+  }
+
+  log('Done ✅');
+}
+
+async function seedOneClient(
+  client: any,
+  scenario: Scenario,
+  now: number,
+  check: (label: string, error: unknown) => void,
+): Promise<void> {
 
     // 1. Clear existing seeded data
     await Promise.all([
