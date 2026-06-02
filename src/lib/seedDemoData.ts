@@ -7,7 +7,7 @@
  */
 
 import { supabase as typedSupabase } from './supabase';
-import { generateInputSheetData, generateEmailDraft } from './aiSimulation';
+import { generateEmailDraft } from './aiSimulation';
 
 const supabase: any = typedSupabase;
 
@@ -522,6 +522,17 @@ const EXTRA_CLIENTS: Array<{ name: string; email: string; phone: string; assigne
   { name: 'Daniel Thompson',  email: 'daniel.thompson@email.com',  phone: '+1 (718) 555-0198', assigned_staff: 'Girik Patel',  status: 'overdue' },
   { name: 'Amelia Garcia',    email: 'amelia.garcia@email.com',    phone: '+1 (917) 555-0152', assigned_staff: 'Sean Mansoor', status: 'active' },
   { name: 'Matthew Lee',      email: 'matthew.lee@email.com',      phone: '+1 (917) 555-0178', assigned_staff: 'Girik Patel',  status: 'active' },
+];
+
+// Hand-written scenario clients — must also be auto-created if missing,
+// otherwise only whoever is in seed.sql ever gets seeded.
+const SCENARIO_CLIENTS: Array<{ name: string; email: string; phone: string; assigned_staff: string; status: string }> = [
+  { name: 'John Smith',       email: 'john.smith@email.com',       phone: '+1 (212) 555-0101', assigned_staff: 'Sean Mansoor', status: 'active' },
+  { name: 'Michael Brown',    email: 'michael.brown@email.com',    phone: '+1 (212) 555-0102', assigned_staff: 'Girik Patel',  status: 'overdue' },
+  { name: 'Sarah Johnson',    email: 'sarah.johnson@email.com',    phone: '+1 (415) 555-0103', assigned_staff: 'Sean Mansoor', status: 'complete' },
+  { name: 'Robert Chen',      email: 'robert.chen@email.com',      phone: '+1 (415) 555-0104', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Maria Rodriguez',  email: 'maria.rodriguez@email.com',  phone: '+1 (646) 555-0105', assigned_staff: 'Sean Mansoor', status: 'complete' },
+  { name: 'David Kim',        email: 'david.kim@email.com',        phone: '+1 (646) 555-0106', assigned_staff: 'Girik Patel',  status: 'active' },
 ];
 
 const PREPARERS = ['Sean Mansoor', 'Girik Patel'];
