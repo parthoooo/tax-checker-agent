@@ -18,6 +18,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import EmailQueue from "./pages/admin/EmailQueue";
 import DevDocs from "./pages/admin/DevDocs";
 import RemindersPage from "./pages/RemindersPage";
+import VaultPage from "./pages/VaultPage";
 import Profile from "./pages/Profile";
 import MagicLinkPortal from "./pages/MagicLinkPortal";
 
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/activity" element={<ProtectedRoute roles={['admin', 'preparer']}><Activity /></ProtectedRoute>} />
               <Route path="/email-queue" element={<ProtectedRoute roles={['admin', 'preparer']}><EmailQueue /></ProtectedRoute>} />
               <Route path="/reminders" element={<ProtectedRoute roles={['admin', 'preparer']}><RemindersPage /></ProtectedRoute>} />
+              <Route path="/vault" element={<ProtectedRoute roles={['admin', 'preparer']}><VaultPage /></ProtectedRoute>} />
 
               {/* Admin only */}
               <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminSettings /></ProtectedRoute>} />

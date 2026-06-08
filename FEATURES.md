@@ -126,6 +126,19 @@ Living document of all features currently shipped in this app. Update this file 
 - Sidebar Reminders badge reads `countPendingReminderDrafts()` from Supabase
 - AdminDashboard "Remind" button updated to "Approve & Send" language; logs Manual Send to history
 
+## Document Vault
+- `/vault` page — two-panel layout (client list sidebar + document grid), mobile collapses to dropdown selector
+- Real Supabase Storage integration — files stored at `clients/{id}/{year}/{type}/{filename}`
+- Shared `uploadDocument()` utility (`src/utils/uploadDocument.ts`) used by all upload zones: validates before uploading, returns structured `UploadResult`
+- `DocumentUpload` component and `MagicLinkPortal` now both use `uploadDocument` — no duplicate validation logic
+- Per-file actions: download (signed URL, 1hr expiry), preview (signed URL in new tab), delete with confirmation dialog
+- AI status badges per file: Verified, Wrong Year, Duplicate, Unexpected, Pending, Flagged, Rejected
+- Empty state placeholder cards per doc type with "Send Upload Link" button (copies magic link to clipboard)
+- Mock file data always present for demo; real Supabase uploads merged on top when available
+- "Download All" (toast) and "Request Missing Docs" (→ /reminders) shortcuts in vault header
+- Client pre-selection via `?client=` query param — AdminDashboard modal "Open in Vault →" button wires this
+- Sidebar "Document Vault" nav item (folder icon) for admin + preparer
+
 ## Tech / UI
 - React 18 + Vite + TypeScript + Tailwind + shadcn/ui
 - React Router v6 with nested layout routes

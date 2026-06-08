@@ -37,22 +37,24 @@ const AppSidebar: React.FC = () => {
   if (!user) return null;
 
   const adminNav: NavItem[] = [
-    { to: '/dashboard', label: 'Dashboard',   icon: LayoutDashboard },
-    { to: '/clients',   label: 'All Clients', icon: Users },
-    { to: '/flags',     label: 'AI Flags',    icon: Flag },
-    { to: '/email-queue', label: 'Outbox',      icon: Mail, badge: pendingEmails },
-    { to: '/reminders',   label: 'Reminders',   icon: Bell, badge: pendingReminders },
-    { to: '/activity',    label: 'Activity Log', icon: ListChecks },
-    { to: '/admin',       label: 'Admin',        icon: Settings, adminOnly: true },
-    { to: '/dev-docs',  label: 'Dev Docs',     icon: FileCode2, adminOnly: true },
-    { to: '/profile',   label: 'Profile',      icon: User },
+    { to: '/dashboard',   label: 'Dashboard',      icon: LayoutDashboard },
+    { to: '/clients',     label: 'All Clients',    icon: Users },
+    { to: '/vault',       label: 'Document Vault', icon: FolderOpen },
+    { to: '/flags',       label: 'AI Flags',       icon: Flag },
+    { to: '/email-queue', label: 'Outbox',         icon: Mail, badge: pendingEmails },
+    { to: '/reminders',   label: 'Reminders',      icon: Bell, badge: pendingReminders },
+    { to: '/activity',    label: 'Activity Log',   icon: ListChecks },
+    { to: '/admin',       label: 'Admin',          icon: Settings, adminOnly: true },
+    { to: '/dev-docs',    label: 'Dev Docs',       icon: FileCode2, adminOnly: true },
+    { to: '/profile',     label: 'Profile',        icon: User },
   ];
 
   const preparerNav: NavItem[] = [
-    { to: '/dashboard',   label: 'My Clients',  icon: Users },
-    { to: '/flags',       label: 'AI Flags',    icon: Flag },
-    { to: '/email-queue', label: 'Outbox',       icon: Mail, badge: pendingEmails },
-    { to: '/reminders',   label: 'Reminders',   icon: Bell, badge: pendingReminders },
+    { to: '/dashboard',   label: 'My Clients',     icon: Users },
+    { to: '/vault',       label: 'Document Vault', icon: FolderOpen },
+    { to: '/flags',       label: 'AI Flags',       icon: Flag },
+    { to: '/email-queue', label: 'Outbox',         icon: Mail, badge: pendingEmails },
+    { to: '/reminders',   label: 'Reminders',      icon: Bell, badge: pendingReminders },
     { to: '/activity',    label: 'Activity Log', icon: ListChecks },
     { to: '/profile',     label: 'Profile',      icon: User },
   ];

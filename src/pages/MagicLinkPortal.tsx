@@ -17,7 +17,8 @@ import {
   createEmailDraft,
   logActivity,
 } from '@/lib/db';
-import { simulateValidation, buildFlagDescription, buildEmailDraftBody } from '@/lib/aiSimulation';
+import { buildFlagDescription, buildEmailDraftBody } from '@/lib/aiSimulation';
+import { uploadDocument } from '@/utils/uploadDocument';
 import type { Database } from '@/lib/database.types';
 
 type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
@@ -74,10 +75,10 @@ const MagicLinkPortal: React.FC = () => {
       .filter(r => r.upload && r.id !== req.id)
       .map(r => r.upload!.file_name);
 
-    const result = await simulateValidation(file, existingNames, req.doc_type);
+    const result = await uploadDocument(file, client.id, req.doc_type, 2024, existingNames);
 
-    // Create a fake storage path for demo (no real Supabase storage in demo)
-    const storagePath = `clients/${client.id}/${Date.now()}_${file.name}`;
+    const aiDbStatus = result.aiStatus === 'verified' ? 'verified' : 'flagged';
+    const storagePath = result.storagePath ?? `clients/${client.id}/2024/${req.doc_type}/${file.name}`;
 
     try {
       const upload = await createDocumentUpload({
@@ -87,35 +88,48 @@ const MagicLinkPortal: React.FC = () => {
         storage_path: storagePath,
         file_size: file.size,
         mime_type: file.type || 'application/octet-stream',
-        ai_status: result.aiStatus,
+        ai_status: aiDbStatus,
         uploaded_by: null,
       });
 
-      if (result.aiStatus === 'flagged' || result.aiStatus === 'rejected') {
+      if (result.aiStatus !== 'verified') {
+        const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
+          wrong_year: 'wrong-year',
+          duplicate:  'duplicate',
+          unexpected: 'unexpected',
+        };
+        const ft = flagTypeMap[result.aiStatus] ?? 'unexpected';
         await createAiFlag({
-          client_id: client.id,
-          upload_id: upload.id,
-          flag_type: result.outcome === 'wrong-year' ? 'wrong-year' :
-                     result.outcome === 'duplicate'  ? 'duplicate'  :
-                     result.outcome === 'too-small'  ? 'unexpected' : 'unexpected',
-          severity: result.outcome === 'wrong-year' ? 'HIGH' : 'MEDIUM',
-          description: buildFlagDescription(result, file.name),
+          client_id:   client.id,
+          upload_id:   upload.id,
+          flag_type:   ft,
+          severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
+          description: result.aiMessage,
           detected_by: 'Doc Classifier Agent',
         });
 
+        // Build a compatible result shape for the email draft builder
+        const draftResult = {
+          outcome: ft === 'wrong-year' ? 'wrong-year' : ft === 'duplicate' ? 'duplicate' : 'unexpected',
+          title: 'Issue Detected',
+          detail: result.aiMessage,
+          aiStatus: 'flagged' as const,
+          confidence: 97,
+        };
         const emailContent = buildEmailDraftBody(
           client.name,
-          result,
+          draftResult as any,
           file.name,
           client.assigned_preparer ?? 'sj@brodermansoor.com'
         );
         await createEmailDraft({
-          client_id: client.id,
-          to_email: client.email,
+          client_id:  client.id,
+          to_email:   client.email,
           from_label: client.assigned_preparer ?? 'sj@brodermansoor.com',
-          subject: emailContent.subject,
-          body: emailContent.body,
-          status: 'pending',
+          subject:    emailContent.subject,
+          body:       emailContent.body,
+          status:     'pending',
+          type:       'outbox',
         });
       }
 
@@ -126,9 +140,19 @@ const MagicLinkPortal: React.FC = () => {
         action: `Uploaded ${file.name} via magic link portal`,
       });
 
+      const validationResult = {
+        outcome: result.aiStatus === 'verified' ? 'verified'
+               : result.aiStatus === 'wrong_year' ? 'wrong-year'
+               : result.aiStatus === 'duplicate'  ? 'duplicate'
+               : 'unexpected',
+        title:     result.aiStatus === 'verified' ? 'Document Verified' : 'Issue Detected',
+        detail:    result.aiMessage || '',
+        aiStatus:  aiDbStatus as any,
+        confidence: 97,
+      };
       setRequirements(prev => prev.map(r =>
         r.id === req.id
-          ? { ...r, upload, uploadState: 'done', validationResult: result }
+          ? { ...r, upload, uploadState: 'done', validationResult: validationResult as any }
           : r
       ));
     } catch {
