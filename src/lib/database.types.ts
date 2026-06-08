@@ -90,6 +90,8 @@ interface EmailDraftRow {
   subject: string;
   body: string;
   status: 'pending' | 'approved' | 'sent' | 'dismissed';
+  /** Discriminates outbox emails from scheduled reminder emails. Null treated as 'outbox'. */
+  type: 'outbox' | 'reminder' | null;
   created_by: string | null;
   sent_at: string | null;
   created_at: string;
@@ -169,12 +171,13 @@ export interface Database {
       };
       email_drafts: {
         Row: EmailDraftRow;
-        Insert: Omit<EmailDraftRow, 'id' | 'created_at' | 'created_by' | 'sent_at' | 'from_label'> & {
+        Insert: Omit<EmailDraftRow, 'id' | 'created_at' | 'created_by' | 'sent_at' | 'from_label' | 'type'> & {
           id?: string;
           created_at?: string;
           created_by?: string | null;
           sent_at?: string | null;
           from_label?: string | null;
+          type?: 'outbox' | 'reminder' | null;
         };
         Update: Partial<EmailDraftRow>;
         Relationships: [];

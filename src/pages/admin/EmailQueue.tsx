@@ -62,9 +62,8 @@ const EmailQueue: React.FC = () => {
             subject:    'Action Required: Missing Tax Documents',
             body,
             status:     'pending',
+            type:       'outbox',
           });
-          // Also a second pending draft + a historical "sent" draft so the
-          // Sent tab is populated for demos.
           const altScenario = DEMO_SCENARIOS[(i + 1) % DEMO_SCENARIOS.length];
           const altBody = await generateEmailDraft(client.name, altScenario.missingDocs, altScenario.preparer);
           await createEmailDraft({
@@ -74,6 +73,7 @@ const EmailQueue: React.FC = () => {
             subject:    'Follow-up: Outstanding Tax Documents',
             body:       altBody,
             status:     'pending',
+            type:       'outbox',
           });
           const sentBody = await generateEmailDraft(client.name, scenario.missingDocs, scenario.preparer);
           await createEmailDraft({
@@ -84,6 +84,7 @@ const EmailQueue: React.FC = () => {
             body:       sentBody,
             status:     'sent',
             sent_at:    new Date(Date.now() - 1000 * 60 * 60 * 24 * (i + 1)).toISOString(),
+            type:       'outbox',
           });
         })
       );
@@ -102,8 +103,8 @@ const EmailQueue: React.FC = () => {
     setLoading(true);
     try {
       const [p, s] = await Promise.all([
-        fetchEmailDrafts('pending'),
-        fetchEmailDrafts('sent'),
+        fetchEmailDrafts('pending', 'outbox'),
+        fetchEmailDrafts('sent', 'outbox'),
       ]);
       setPending(p as EmailDraft[]);
       setSent(s as EmailDraft[]);
@@ -153,7 +154,7 @@ const EmailQueue: React.FC = () => {
   return (
     <PageShell>
       <PageHeader
-        title="Email Queue"
+        title="Outbox"
         subtitle="AI-drafted emails awaiting your approval before sending"
         actions={
           <Button

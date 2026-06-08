@@ -191,13 +191,20 @@ export async function generateMagicToken(clientId: string): Promise<string> {
 // ── Email Drafts ───────────────────────────────────────────────────────────
 
 export async function fetchEmailDrafts(
-  status?: EmailDraft['status']
+  status?: EmailDraft['status'],
+  type?: 'outbox' | 'reminder'
 ): Promise<(EmailDraft & { clients: { name: string; email: string } | null })[]> {
   let query = supabase
     .from('email_drafts')
     .select('*, clients(name, email)')
     .order('created_at', { ascending: false });
   if (status) query = query.eq('status', status);
+  if (type === 'reminder') {
+    query = query.eq('type', 'reminder');
+  } else if (type === 'outbox') {
+    // Include both explicit 'outbox' and legacy rows where type is null
+    query = query.or('type.eq.outbox,type.is.null');
+  }
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as any;
@@ -243,7 +250,18 @@ export async function countPendingEmailDrafts(): Promise<number> {
   const { count, error } = await supabase
     .from('email_drafts')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'pending');
+    .eq('status', 'pending')
+    .or('type.eq.outbox,type.is.null');
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function countPendingReminderDrafts(): Promise<number> {
+  const { count, error } = await supabase
+    .from('email_drafts')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .eq('type', 'reminder');
   if (error) return 0;
   return count ?? 0;
 }

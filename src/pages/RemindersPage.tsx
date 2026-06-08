@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,21 +8,26 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ChevronDown, ChevronUp, Bell } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, Loader2, Sparkles, XCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  fetchEmailDrafts,
+  approveEmailDraft,
+  dismissEmailDraft,
+  updateEmailDraftBody,
+  fetchClients,
+  createEmailDraft,
+  logActivity,
+} from '@/lib/db';
+import { generateEmailDraft } from '@/lib/aiSimulation';
+import type { Database } from '@/lib/database.types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface PendingReminder {
-  id: string;
-  clientName: string;
-  clientEmail: string;
-  preparer: string;
-  missingDocs: string[];
-  daysOverdue: number;
-  subject: string;
-  body: string;
-}
+type ReminderDraft = Database['public']['Tables']['email_drafts']['Row'] & {
+  clients: { name: string; email: string } | null;
+};
 
 interface HistoryEntry {
   id: string;
@@ -50,49 +55,6 @@ interface ClientOverride {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MOCK_PENDING: PendingReminder[] = [
-  {
-    id: 'rem-001',
-    clientName: 'Robert Chen',
-    clientEmail: 'robert.chen@email.com',
-    preparer: 'Girik',
-    missingDocs: ['W-2', '1099-NEC', '1098 Mortgage Interest', 'Schedule C'],
-    daysOverdue: 6,
-    subject: 'Action Required: Missing Tax Documents — Robert Chen',
-    body: `Hi Robert,\n\nI hope you're doing well. I'm reaching out because we're still missing a few documents needed to complete your 2024 tax return.\n\nOutstanding documents:\n• W-2 (Employer wage statement)\n• 1099-NEC (Non-employee compensation)\n• 1098 Mortgage Interest Statement\n• Schedule C (Business income/expenses)\n\nPlease upload these at your earliest convenience using your secure portal link. If you have any questions about what's needed, don't hesitate to reach out.\n\nThank you,\nGirik\nBroder-Mansoor & Associates`,
-  },
-  {
-    id: 'rem-002',
-    clientName: 'Maria Rodriguez',
-    clientEmail: 'maria.rodriguez@email.com',
-    preparer: 'Sean',
-    missingDocs: ['1099-NEC', 'Schedule C'],
-    daysOverdue: 3,
-    subject: 'Quick Reminder: 2 Documents Still Needed — Maria Rodriguez',
-    body: `Hi Maria,\n\nJust a quick follow-up — we're still waiting on 2 documents to complete your 2024 return:\n\n• 1099-NEC (Non-employee compensation)\n• Schedule C (Business income/expenses)\n\nPlease upload when you get a chance. Feel free to reply if you have any questions.\n\nThanks,\nSean\nBroder-Mansoor & Associates`,
-  },
-  {
-    id: 'rem-003',
-    clientName: 'Michael Brown',
-    clientEmail: 'michael.brown@email.com',
-    preparer: 'Girik',
-    missingDocs: ['W-2 (correct year — 2024 needed)'],
-    daysOverdue: 4,
-    subject: 'Important: Please Re-Upload Your W-2 — Michael Brown',
-    body: `Hi Michael,\n\nThank you for uploading your documents. However, our system detected that the W-2 you uploaded is for tax year 2023. We need your 2024 W-2 to complete your return.\n\nPlease re-upload the correct document at your earliest convenience.\n\nSorry for the inconvenience — this happens more often than you'd think!\n\nThank you,\nGirik\nBroder-Mansoor & Associates`,
-  },
-  {
-    id: 'rem-004',
-    clientName: 'Sarah Johnson',
-    clientEmail: 'sarah.johnson@email.com',
-    preparer: 'Sean',
-    missingDocs: ['Schedule C'],
-    daysOverdue: 9,
-    subject: 'Final Reminder: Schedule C Needed — Sarah Johnson',
-    body: `Hi Sarah,\n\nThis is a follow-up regarding your 2024 tax return. We're still missing your Schedule C (business income and expenses).\n\nWithout this document, we're unable to finalize your return. Please upload it as soon as possible to avoid any delays.\n\nIf you need assistance, please don't hesitate to call us at (212) 599-2755.\n\nThank you,\nSean\nBroder-Mansoor & Associates`,
-  },
-];
-
 const SEED_HISTORY: HistoryEntry[] = [
   { id: 'h-001', date: '2025-05-26T09:14:00Z', clientName: 'James Wilson',    preparer: 'Girik', type: 'AI Draft Approved', docs: ['W-2', '1099-INT'],   status: 'Sent' },
   { id: 'h-002', date: '2025-05-27T11:32:00Z', clientName: 'Emily Davis',     preparer: 'Sean',  type: 'AI Draft Approved', docs: ['1099-NEC'],           status: 'Sent' },
@@ -103,205 +65,268 @@ const SEED_HISTORY: HistoryEntry[] = [
 ];
 
 const DEFAULT_CLIENT_OVERRIDES: ClientOverride[] = [
-  { clientName: 'Robert Chen',    override: false, customCadence: 3, doNotRemind: true },
-  { clientName: 'Maria Rodriguez',override: false, customCadence: 3, doNotRemind: true },
-  { clientName: 'Michael Brown',  override: false, customCadence: 3, doNotRemind: false },
-  { clientName: 'Sarah Johnson',  override: false, customCadence: 3, doNotRemind: false },
-  { clientName: 'James Wilson',   override: false, customCadence: 3, doNotRemind: false },
+  { clientName: 'Robert Chen',     override: false, customCadence: 3, doNotRemind: true },
+  { clientName: 'Maria Rodriguez', override: false, customCadence: 3, doNotRemind: true },
+  { clientName: 'Michael Brown',   override: false, customCadence: 3, doNotRemind: false },
+  { clientName: 'Sarah Johnson',   override: false, customCadence: 3, doNotRemind: false },
+  { clientName: 'James Wilson',    override: false, customCadence: 3, doNotRemind: false },
 ];
 
-const LS_PENDING  = 'rm_pending';
-const LS_HISTORY  = 'rm_history';
-const LS_CADENCE  = 'rm_cadence';
-const LS_OVERRIDES= 'rm_overrides';
+const REMINDER_SCENARIOS: Array<{ missingDocs: string[]; preparer: string }> = [
+  { missingDocs: ['W-2', '1099-NEC', '1098 Mortgage Interest', 'Schedule C'], preparer: 'Girik' },
+  { missingDocs: ['1099-NEC', 'Schedule C'],                                   preparer: 'Sean' },
+  { missingDocs: ['W-2 (correct year — 2024 needed)'],                         preparer: 'Girik' },
+  { missingDocs: ['Schedule C'],                                                preparer: 'Sean' },
+];
+
+const LS_HISTORY   = 'rm_history';
+const LS_CADENCE   = 'rm_cadence';
+const LS_OVERRIDES = 'rm_overrides';
 
 function loadLS<T>(key: string, fallback: T): T {
   try {
     const s = localStorage.getItem(key);
     return s ? (JSON.parse(s) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
-
 function saveLS(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-const OverdueBadge: React.FC<{ days: number }> = ({ days }) => (
-  <Badge
-    className={
-      days > 7
-        ? 'bg-red-100 text-red-700 border-red-200'
-        : 'bg-yellow-100 text-yellow-700 border-yellow-200'
-    }
-    variant="outline"
-  >
-    {days}d overdue
-  </Badge>
-);
-
-interface PendingCardProps {
-  reminder: PendingReminder;
-  onApprove: (id: string) => void;
-  onDismiss: (id: string) => void;
-  onSave: (id: string, body: string) => void;
-}
-
-const PendingCard: React.FC<PendingCardProps> = ({ reminder, onApprove, onDismiss, onSave }) => {
-  const [expanded, setExpanded]   = useState(false);
-  const [editing,  setEditing]    = useState(false);
-  const [editBody, setEditBody]   = useState(reminder.body);
-
-  const handleSave = () => {
-    onSave(reminder.id, editBody);
-    setEditing(false);
-    toast.success('Draft updated');
-  };
-
-  return (
-    <Card className="border border-gray-200">
-      <CardContent className="p-4">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          {/* Left */}
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="font-semibold text-gray-900">{reminder.clientName}</div>
-            <div className="text-sm text-gray-500">{reminder.clientEmail}</div>
-            <div className="text-sm text-gray-500">Preparer: {reminder.preparer}</div>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              <Badge variant="secondary">{reminder.missingDocs.length} doc{reminder.missingDocs.length !== 1 ? 's' : ''} missing</Badge>
-              <OverdueBadge days={reminder.daysOverdue} />
-            </div>
-          </div>
-
-          {/* Center — email preview */}
-          <div className="flex-[2] min-w-0 border rounded-md bg-gray-50 overflow-hidden">
-            <button
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-              onClick={() => setExpanded(e => !e)}
-            >
-              <span className="truncate mr-2">{reminder.subject}</span>
-              {expanded ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
-            </button>
-            {expanded && (
-              <div className="px-3 pb-3">
-                {editing ? (
-                  <div className="space-y-2 mt-1">
-                    <Textarea
-                      rows={10}
-                      value={editBody}
-                      onChange={e => setEditBody(e.target.value)}
-                      className="text-sm font-mono"
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSave}>Save</Button>
-                      <Button size="sm" variant="outline" onClick={() => { setEditing(false); setEditBody(reminder.body); }}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <pre className="text-xs text-gray-600 whitespace-pre-wrap mt-1 font-sans leading-relaxed">{editBody}</pre>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Right — actions */}
-          <div className="flex sm:flex-col gap-2 sm:w-36 shrink-0">
-            <Button
-              size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none"
-              onClick={() => onApprove(reminder.id)}
-            >
-              Approve & Send
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex-1 sm:flex-none"
-              onClick={() => { setExpanded(true); setEditing(e => !e); }}
-            >
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-gray-400 hover:text-gray-600 text-xs flex-1 sm:flex-none"
-              onClick={() => onDismiss(reminder.id)}
-            >
-              Dismiss
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// ─── Pending Tab (Supabase-backed) ───────────────────────────────────────────
 
 const PendingTab: React.FC<{
-  pending: PendingReminder[];
-  setPending: React.Dispatch<React.SetStateAction<PendingReminder[]>>;
   addHistory: (entry: HistoryEntry) => void;
-}> = ({ pending, setPending, addHistory }) => {
+}> = ({ addHistory }) => {
+  const { user } = useAuth();
+  const [drafts,   setDrafts]   = useState<ReminderDraft[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [seeding,  setSeeding]  = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [editing,  setEditing]  = useState<Record<string, string>>({});
 
-  const remove = (id: string) => setPending(p => p.filter(r => r.id !== id));
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchEmailDrafts('pending', 'reminder');
+      setDrafts(data as ReminderDraft[]);
+    } catch {
+      toast.error('Failed to load reminder queue');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const approve = (id: string) => {
-    const r = pending.find(p => p.id === id)!;
-    toast.success(`Email sent to ${r.clientEmail}`);
-    addHistory({
-      id: `h-${Date.now()}`,
-      date: new Date().toISOString(),
-      clientName: r.clientName,
-      preparer: r.preparer,
-      type: 'AI Draft Approved',
-      docs: r.missingDocs,
-      status: 'Sent',
-    });
-    remove(id);
+  useEffect(() => { load(); }, [load]);
+
+  const handleApprove = async (d: ReminderDraft) => {
+    try {
+      const body = editing[d.id] ?? d.body;
+      if (body !== d.body) await updateEmailDraftBody(d.id, body, d.subject);
+      await approveEmailDraft(d.id, user?.name ?? 'Staff');
+      if (d.client_id) {
+        await logActivity({
+          client_id:  d.client_id,
+          actor:      user?.name ?? 'Staff',
+          actor_type: 'staff',
+          action:     `Approved & sent reminder to ${d.clients?.name ?? d.to_email}`,
+        });
+      }
+      toast.success(`Email sent to ${d.to_email}`);
+      addHistory({
+        id: `h-${Date.now()}`,
+        date: new Date().toISOString(),
+        clientName: d.clients?.name ?? d.to_email,
+        preparer: d.from_label ?? 'Staff',
+        type: 'AI Draft Approved',
+        docs: [],
+        status: 'Sent',
+      });
+      await load();
+    } catch {
+      toast.error('Failed to approve reminder');
+    }
   };
 
-  const dismiss = (id: string) => {
-    const r = pending.find(p => p.id === id)!;
-    toast('Reminder dismissed');
-    addHistory({
-      id: `h-${Date.now()}`,
-      date: new Date().toISOString(),
-      clientName: r.clientName,
-      preparer: r.preparer,
-      type: 'Dismissed',
-      docs: r.missingDocs,
-      status: 'Dismissed',
-    });
-    remove(id);
+  const handleDismiss = async (d: ReminderDraft) => {
+    try {
+      await dismissEmailDraft(d.id);
+      toast('Reminder dismissed');
+      addHistory({
+        id: `h-${Date.now()}`,
+        date: new Date().toISOString(),
+        clientName: d.clients?.name ?? d.to_email,
+        preparer: d.from_label ?? 'Staff',
+        type: 'Dismissed',
+        docs: [],
+        status: 'Dismissed',
+      });
+      await load();
+    } catch {
+      toast.error('Failed to dismiss reminder');
+    }
   };
 
-  const saveEdit = (id: string, body: string) => {
-    setPending(p => p.map(r => r.id === id ? { ...r, body } : r));
+  const handleSeedDemoReminders = async () => {
+    setSeeding(true);
+    try {
+      const clients = await fetchClients();
+      const active = clients.filter(c => c.status !== 'complete').slice(0, 4);
+      await Promise.all(
+        active.map(async (client, i) => {
+          const scenario = REMINDER_SCENARIOS[i % REMINDER_SCENARIOS.length];
+          const body = await generateEmailDraft(client.name, scenario.missingDocs, scenario.preparer);
+          await createEmailDraft({
+            client_id:  client.id,
+            to_email:   client.email,
+            from_label: scenario.preparer,
+            subject:    `Action Required: Missing Tax Documents — ${client.name}`,
+            body,
+            status:     'pending',
+            type:       'reminder',
+          });
+        })
+      );
+      toast.success('Demo reminders generated', { description: `${active.length} AI-drafted reminders added` });
+      await load();
+    } catch (err: any) {
+      toast.error('Failed to seed demo reminders', { description: err?.message });
+    } finally {
+      setSeeding(false);
+    }
   };
 
-  if (pending.length === 0) {
+  const toggleExpand = (id: string) => setExpanded(e => ({ ...e, [id]: !e[id] }));
+
+  const startEdit = (d: ReminderDraft) => {
+    setEditing(e => ({ ...e, [d.id]: e[d.id] ?? d.body }));
+    setExpanded(e => ({ ...e, [d.id]: true }));
+  };
+
+  const cancelEdit = (id: string) => {
+    setEditing(e => { const n = { ...e }; delete n[id]; return n; });
+  };
+
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center text-gray-500">
-        <Bell className="w-10 h-10 mb-3 text-gray-300" />
-        <p className="font-medium">All caught up — no reminders pending approval.</p>
+      <div className="flex justify-center py-16">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {pending.map(r => (
-        <PendingCard key={r.id} reminder={r} onApprove={approve} onDismiss={dismiss} onSave={saveEdit} />
-      ))}
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSeedDemoReminders}
+          disabled={seeding}
+          className="gap-2"
+        >
+          {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          Seed Demo Reminders
+        </Button>
+      </div>
+
+      {drafts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center text-gray-500">
+          <Bell className="w-10 h-10 mb-3 text-gray-300" />
+          <p className="font-medium">All caught up — no reminders pending approval.</p>
+          <p className="text-sm text-gray-400 mt-1">Use "Seed Demo Reminders" to generate examples.</p>
+        </div>
+      ) : (
+        drafts.map(d => {
+          const isExpanded = !!expanded[d.id];
+          const isEditing  = d.id in editing;
+          const editBody   = editing[d.id] ?? d.body;
+          return (
+            <Card key={d.id} className="border border-gray-200">
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                  {/* Left */}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="font-semibold text-gray-900">{d.clients?.name ?? d.to_email}</div>
+                    <div className="text-sm text-gray-500">{d.to_email}</div>
+                    {d.from_label && (
+                      <div className="text-sm text-gray-500">Preparer: {d.from_label}</div>
+                    )}
+                    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs" variant="outline">
+                      Scheduled Reminder
+                    </Badge>
+                  </div>
+
+                  {/* Center — email preview */}
+                  <div className="flex-[2] min-w-0 border rounded-md bg-gray-50 overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                      onClick={() => toggleExpand(d.id)}
+                    >
+                      <span className="truncate mr-2">{d.subject}</span>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3">
+                        {isEditing ? (
+                          <div className="space-y-2 mt-1">
+                            <Textarea
+                              rows={10}
+                              value={editBody}
+                              onChange={e => setEditing(ed => ({ ...ed, [d.id]: e.target.value }))}
+                              className="text-sm font-mono"
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => { /* saved on approve */ toast.success('Draft updated'); }}>Save</Button>
+                              <Button size="sm" variant="outline" onClick={() => cancelEdit(d.id)}>Cancel</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <pre className="text-xs text-gray-600 whitespace-pre-wrap mt-1 font-sans leading-relaxed">{d.body}</pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right — actions */}
+                  <div className="flex sm:flex-col gap-2 sm:w-36 shrink-0">
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none"
+                      onClick={() => handleApprove(d)}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                      Approve & Send
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 sm:flex-none"
+                      onClick={() => { startEdit(d); }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-gray-400 hover:text-gray-600 text-xs flex-1 sm:flex-none"
+                      onClick={() => handleDismiss(d)}
+                    >
+                      <XCircle className="w-3.5 h-3.5 mr-1" />
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
     </div>
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Cadence Tab ──────────────────────────────────────────────────────────────
 
 const CadenceTab: React.FC<{
   settings: CadenceSettings;
@@ -321,7 +346,6 @@ const CadenceTab: React.FC<{
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* Global defaults */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Global Defaults</CardTitle>
@@ -382,7 +406,6 @@ const CadenceTab: React.FC<{
         </CardContent>
       </Card>
 
-      {/* Per-client overrides */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Per-Client Overrides</CardTitle>
@@ -442,7 +465,7 @@ const CadenceTab: React.FC<{
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── History Tab ──────────────────────────────────────────────────────────────
 
 const HistoryTab: React.FC<{ history: HistoryEntry[] }> = ({ history }) => {
   const fmt = (iso: string) =>
@@ -471,7 +494,10 @@ const HistoryTab: React.FC<{ history: HistoryEntry[] }> = ({ history }) => {
               <td className="py-2.5 pr-4 text-gray-600">{h.preparer}</td>
               <td className="py-2.5 pr-4 text-gray-600">{h.type}</td>
               <td className="py-2.5 pr-4 text-gray-500 max-w-[200px]">
-                <span className="truncate block">{h.docs.join(', ')}</span>
+                {h.docs.length > 0
+                  ? <span className="truncate block">{h.docs.join(', ')}</span>
+                  : <span className="text-gray-300">—</span>
+                }
               </td>
               <td className="py-2.5">
                 <Badge
@@ -499,15 +525,12 @@ const HistoryTab: React.FC<{ history: HistoryEntry[] }> = ({ history }) => {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const RemindersPage: React.FC = () => {
-  const [pending, setPending]     = useState<PendingReminder[]>(() => loadLS(LS_PENDING, MOCK_PENDING));
-  const [history, setHistory]     = useState<HistoryEntry[]>(() => loadLS(LS_HISTORY, SEED_HISTORY));
-  const [settings, setSettings]   = useState<CadenceSettings>(() =>
+  const [history,  setHistory]  = useState<HistoryEntry[]>(() => loadLS(LS_HISTORY, SEED_HISTORY));
+  const [settings, setSettings] = useState<CadenceSettings>(() =>
     loadLS(LS_CADENCE, { firstReminderDays: 3, repeatEveryDays: 3, stopAfterSends: 4, excludeAbad: true })
   );
   const [overrides, setOverrides] = useState<ClientOverride[]>(() => loadLS(LS_OVERRIDES, DEFAULT_CLIENT_OVERRIDES));
 
-  // Persist whenever state changes
-  useEffect(() => { saveLS(LS_PENDING, pending); }, [pending]);
   useEffect(() => { saveLS(LS_HISTORY, history); }, [history]);
 
   const addHistory = (entry: HistoryEntry) => setHistory(h => [entry, ...h]);
@@ -518,31 +541,19 @@ const RemindersPage: React.FC = () => {
         <Bell className="w-6 h-6 text-blue-600" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Reminders</h1>
-          <p className="text-sm text-gray-500">AI-drafted follow-up emails — review before sending</p>
+          <p className="text-sm text-gray-500">Scheduled follow-up emails — review and approve before sending</p>
         </div>
-        {pending.length > 0 && (
-          <Badge className="ml-auto bg-red-500 text-white text-sm px-2.5 py-1">
-            {pending.length} pending
-          </Badge>
-        )}
       </div>
 
       <Tabs defaultValue="pending">
         <TabsList className="mb-6">
-          <TabsTrigger value="pending" className="relative">
-            Pending Approval
-            {pending.length > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] inline-flex items-center justify-center">
-                {pending.length}
-              </span>
-            )}
-          </TabsTrigger>
+          <TabsTrigger value="pending">Pending Approval</TabsTrigger>
           <TabsTrigger value="cadence">Cadence Settings</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pending">
-          <PendingTab pending={pending} setPending={setPending} addHistory={addHistory} />
+          <PendingTab addHistory={addHistory} />
         </TabsContent>
 
         <TabsContent value="cadence">
