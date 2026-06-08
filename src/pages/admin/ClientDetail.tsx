@@ -329,6 +329,18 @@ const ClientDetail: React.FC = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Magic Links */}
+          <TabsContent value="magic-links" className="space-y-4">
+            <MagicLinksPanel
+              client={client}
+              requirements={requirements}
+              uploads={uploads}
+              sentReqIds={sentReqIds}
+              setSentReqIds={setSentReqIds}
+              onTokenRefresh={(updated) => setClient(updated)}
+            />
+          </TabsContent>
         </Tabs>
       </main>
 
