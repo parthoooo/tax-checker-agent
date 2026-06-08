@@ -1,18 +1,20 @@
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { 
-  FileText, 
-  Download, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  FileText,
+  Download,
+  CheckCircle,
+  AlertCircle,
   Clock,
   MessageSquare,
-  Trash2
+  Trash2,
+  Archive,
 } from 'lucide-react';
 
 interface ClientDetailModalProps {
@@ -41,6 +43,7 @@ interface ActivityItem {
 }
 
 const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ clientId, onClose }) => {
+  const navigate = useNavigate();
   const [documents] = useState<DocumentFile[]>([
     {
       id: '1',
@@ -112,7 +115,18 @@ const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ clientId, onClose
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Client Details: John Smith</DialogTitle>
+          <DialogTitle className="flex items-center justify-between gap-2 pr-8">
+          <span>Client Details: John Smith</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs shrink-0"
+            onClick={() => { onClose(); navigate(`/vault?client=${clientId}`); }}
+          >
+            <Archive className="w-3.5 h-3.5 mr-1" />
+            Open in Vault →
+          </Button>
+        </DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="documents" className="w-full">

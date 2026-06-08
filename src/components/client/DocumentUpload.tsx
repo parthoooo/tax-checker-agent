@@ -2,8 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, FileText, X, Loader2, AlertTriangle, CheckCircle2, Copy, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
-import { uploadFileToStorage, createDocumentUpload, createAiFlag, logActivity } from '@/lib/db';
-import { simulateValidation } from '@/lib/aiSimulation';
+import { createDocumentUpload, createAiFlag, logActivity } from '@/lib/db';
+import { uploadDocument } from '@/utils/uploadDocument';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DocumentUploadProps {
@@ -14,36 +14,41 @@ interface DocumentUploadProps {
   onUpload: (documentId: string, file: File) => void;
 }
 
-import type { ValidationResult } from '@/lib/aiSimulation';
-
 const sessionUploaded = new Set<string>();
 
 const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentName, hint, clientId, onUpload }) => {
   const { user, session } = useAuth();
-  const [isDragOver, setIsDragOver]   = useState(false);
+  const [isDragOver, setIsDragOver]     = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysis, setAnalysis]       = useState<ValidationResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing]   = useState(false);
+  const [outcome, setOutcome]           = useState<string | null>(null);
+  const [message, setMessage]           = useState('');
 
   const handleFile = async (file: File) => {
     setSelectedFile(file);
-    setAnalysis(null);
+    setOutcome(null);
     setIsAnalyzing(true);
 
-    const result = await simulateValidation(file, [...sessionUploaded]);
-    setAnalysis(result);
-    setIsAnalyzing(false);
+    const result = await uploadDocument(
+      file,
+      clientId,
+      documentName,
+      2024,
+      [...sessionUploaded],
+    );
 
-    if (result.outcome === 'verified') {
+    setIsAnalyzing(false);
+    setOutcome(result.aiStatus);
+    setMessage(result.aiMessage || result.error || '');
+
+    if (result.aiStatus === 'verified' && result.success) {
       sessionUploaded.add(file.name.toLowerCase());
       try {
-        const storagePath = await uploadFileToStorage(clientId, file);
-
         await createDocumentUpload({
           client_id:      clientId,
           requirement_id: documentId.startsWith('req-') ? documentId.replace('req-', '') : null,
           file_name:      file.name,
-          storage_path:   storagePath,
+          storage_path:   result.storagePath ?? `clients/${clientId}/2024/${documentName}/${file.name}`,
           file_size:      file.size,
           mime_type:      file.type || null,
           ai_status:      'verified',
@@ -61,25 +66,23 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
         toast.success('Document uploaded', { description: `${documentName} verified and filed.` });
       } catch (err: any) {
         toast.error('Upload failed', { description: err?.message ?? 'Please try again.' });
-        setAnalysis(null);
+        setOutcome(null);
         setSelectedFile(null);
       }
-    } else {
+    } else if (result.aiStatus !== 'verified') {
       const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
-        'wrong-year':        'wrong-year',
-        'duplicate':         'duplicate',
-        'unexpected':        'unexpected',
-        'too-small':         'unexpected',
-        'page_count_warning':'unexpected',
+        wrong_year: 'wrong-year',
+        duplicate:  'duplicate',
+        unexpected: 'unexpected',
       };
-      const ft = flagTypeMap[result.outcome];
+      const ft = flagTypeMap[result.aiStatus];
       if (ft && clientId) {
         createAiFlag({
           client_id:   clientId,
           upload_id:   null,
           flag_type:   ft,
           severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
-          description: result.detail,
+          description: result.aiMessage,
           detected_by: 'Doc Classifier Agent',
           resolved:    false,
           resolved_at: null,
@@ -102,7 +105,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
     if (files.length > 0) handleFile(files[0]);
   };
 
-  const reset = () => { setSelectedFile(null); setAnalysis(null); setIsAnalyzing(false); };
+  const reset = () => { setSelectedFile(null); setOutcome(null); setIsAnalyzing(false); };
 
   return (
     <div className="space-y-3">
@@ -156,66 +159,52 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
             </div>
           )}
 
-          {analysis?.outcome === 'wrong-year' && (
+          {outcome === 'wrong_year' && (
             <div className="p-3 rounded-md bg-red-50 border border-red-300">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-red-900 text-sm">⚠️ {analysis.title}</p>
-                  <p className="text-sm text-red-800 mt-1">{analysis.detail}</p>
+                  <p className="font-semibold text-red-900 text-sm">⚠️ Wrong Tax Year Detected</p>
+                  <p className="text-sm text-red-800 mt-1">{message}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-red-300" onClick={reset}>Re-upload</Button>
                 </div>
               </div>
             </div>
           )}
 
-          {analysis?.outcome === 'duplicate' && (
+          {outcome === 'duplicate' && (
             <div className="p-3 rounded-md bg-orange-50 border border-orange-300">
               <div className="flex items-start gap-2">
                 <Copy className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-orange-900 text-sm">🔁 {analysis.title}</p>
-                  <p className="text-sm text-orange-800 mt-1">{analysis.detail}</p>
+                  <p className="font-semibold text-orange-900 text-sm">🔁 Duplicate Detected</p>
+                  <p className="text-sm text-orange-800 mt-1">{message}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-orange-300" onClick={reset}>Dismiss</Button>
                 </div>
               </div>
             </div>
           )}
 
-          {(analysis?.outcome === 'unexpected' || analysis?.outcome === 'too-small') && (
+          {outcome === 'unexpected' && (
             <div className="p-3 rounded-md bg-yellow-50 border border-yellow-300">
               <div className="flex items-start gap-2">
                 <FileWarning className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-yellow-900 text-sm">📂 {analysis.title}</p>
-                  <p className="text-sm text-yellow-800 mt-1">{analysis.detail}</p>
+                  <p className="font-semibold text-yellow-900 text-sm">📂 Unexpected Document</p>
+                  <p className="text-sm text-yellow-800 mt-1">{message}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-yellow-400" onClick={reset}>Remove</Button>
                 </div>
               </div>
             </div>
           )}
 
-          {analysis?.outcome === 'page_count_warning' && (
-            <div className="p-3 rounded-md bg-amber-50 border border-amber-300">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-semibold text-amber-900 text-sm">📄 {analysis.title}</p>
-                  <p className="text-sm text-amber-800 mt-1">{analysis.detail}</p>
-                  <Button size="sm" variant="outline" className="mt-2 border-amber-400" onClick={reset}>Re-upload</Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {analysis?.outcome === 'verified' && (
+          {outcome === 'verified' && (
             <div className="p-3 rounded-md bg-green-50 border border-green-300">
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-green-900 text-sm">✅ {analysis.title}</p>
-                  <p className="text-sm text-green-800 mt-1">{analysis.detail}</p>
-                  <p className="text-xs text-green-600 mt-0.5">Confidence: {analysis.confidence}%</p>
+                  <p className="font-semibold text-green-900 text-sm">✅ Document Verified</p>
+                  <p className="text-sm text-green-800 mt-1">{message}</p>
                 </div>
               </div>
             </div>
