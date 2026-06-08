@@ -48,7 +48,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-blue-900">Broder-Mansoor AI</CardTitle>
+          <CardTitle className="text-2xl font-bold text-blue-900">Broder Mansoor Muqtadir, Inc. AI</CardTitle>
           <p className="text-muted-foreground text-sm">AI-Powered Tax Document Management</p>
         </CardHeader>
         <CardContent>

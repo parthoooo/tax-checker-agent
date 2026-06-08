@@ -139,7 +139,7 @@ const AdminDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div>
-              <h1 className="text-xl font-semibold text-blue-900">Broder-Mansoor & Associates | Tax Season 2024</h1>
+              <h1 className="text-xl font-semibold text-blue-900">Broder Mansoor Muqtadir, Inc. | Tax Season 2024</h1>
               <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
               <p className="text-xs text-gray-400 mt-0.5">Client Portal: brodermansoor.buildyourai.consulting</p>
             </div>

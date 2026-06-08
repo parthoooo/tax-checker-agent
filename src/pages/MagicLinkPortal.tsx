@@ -182,7 +182,7 @@ const MagicLinkPortal: React.FC = () => {
               This upload link is no longer valid. Please contact your tax preparer to receive a new link.
             </p>
             <p className="text-sm font-medium text-blue-700">sj@brodermansoor.com</p>
-            <p className="text-xs text-gray-400 mt-4">Broder-Mansoor & Associates · Powered by SJ Innovation AI</p>
+            <p className="text-xs text-gray-400 mt-4">Broder Mansoor Muqtadir, Inc. · Powered by SJ Innovation AI</p>
           </CardContent>
         </Card>
       </div>
@@ -201,7 +201,7 @@ const MagicLinkPortal: React.FC = () => {
       <div className="bg-[#0f1f3d] text-white px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold">Broder-Mansoor & Associates</h1>
+            <h1 className="text-lg font-bold">Broder Mansoor Muqtadir, Inc.</h1>
             <p className="text-xs text-blue-200/70">Secure Document Upload Portal</p>
           </div>
           <p className="text-xs text-blue-200/60">Powered by SJ Innovation AI</p>

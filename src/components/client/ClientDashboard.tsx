@@ -73,7 +73,7 @@ const ClientDashboard: React.FC = () => {
     if (!clientId) return;
     try {
       const subject = 'Action Required: Missing Tax Documents';
-      const body    = `Hi ${user?.name?.split(' ')[0]},\n\nYou are still missing: ${missingDocs.join(', ')}.\n\nPlease log in to your portal to upload them.\n\n— Broder-Mansoor & Associates`;
+      const body    = `Hi ${user?.name?.split(' ')[0]},\n\nYou are still missing: ${missingDocs.join(', ')}.\n\nPlease log in to your portal to upload them.\n\n— Broder Mansoor Muqtadir, Inc.`;
 
       await saveReminder({ client_id: clientId, sent_by: session?.user?.id ?? null, to_email: clientEmail, subject, body });
       await logActivity({ client_id: clientId, actor: user?.name ?? 'Client', actor_type: 'client', action: 'Sent self-reminder for missing documents' });
@@ -108,7 +108,7 @@ const ClientDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div>
-              <h1 className="text-xl font-semibold text-blue-900">Broder-Mansoor Portal</h1>
+              <h1 className="text-xl font-semibold text-blue-900">Broder Mansoor Muqtadir, Inc. Portal</h1>
               <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
             <Button variant="outline" onClick={logout}><LogOut className="w-4 h-4 mr-2" />Logout</Button>

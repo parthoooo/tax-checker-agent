@@ -301,7 +301,7 @@ const DevDocs: React.FC = () => {
     <PageShell>
       <PageHeader
         title="Developer Documentation"
-        subtitle="Feature inventory, technical spec, and production estimation for Broder-Mansoor AI"
+        subtitle="Feature inventory, technical spec, and production estimation for Broder Mansoor Muqtadir, Inc. AI"
       />
 
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
