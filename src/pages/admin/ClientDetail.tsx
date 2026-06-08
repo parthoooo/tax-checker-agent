@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send } from 'lucide-react';
 import ReminderModal from '@/components/common/ReminderModal';
 import InputSheet from '@/components/client/InputSheet';
 import TimeTracker from '@/components/client/TimeTracker';
+import MagicLinksPanel from '@/components/admin/MagicLinksPanel';
 import { toast } from 'sonner';
 import {
   fetchClientById,
@@ -43,6 +44,7 @@ const ClientDetail: React.FC = () => {
   const [reminderOpen, setReminderOpen] = useState(false);
   const [note, setNote] = useState('');
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [sentReqIds, setSentReqIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!id) return;
@@ -181,6 +183,7 @@ const ClientDetail: React.FC = () => {
             </TabsTrigger>
             <TabsTrigger value="activity">Activity Log</TabsTrigger>
             <TabsTrigger value="notes">Internal Notes</TabsTrigger>
+            <TabsTrigger value="magic-links">Magic Links</TabsTrigger>
           </TabsList>
 
           {/* Document Checklist */}
@@ -326,6 +329,18 @@ const ClientDetail: React.FC = () => {
                 <Button onClick={() => { toast.success('Note saved'); setNote(''); }}>Save Note</Button>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Magic Links */}
+          <TabsContent value="magic-links" className="space-y-4">
+            <MagicLinksPanel
+              client={client}
+              requirements={requirements}
+              uploads={uploads}
+              sentReqIds={sentReqIds}
+              setSentReqIds={setSentReqIds}
+              onTokenRefresh={(updated) => setClient(updated)}
+            />
           </TabsContent>
         </Tabs>
       </main>

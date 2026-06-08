@@ -111,15 +111,6 @@ const Login: React.FC = () => {
             >
               Girik (Preparer)
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 border-2 border-gray-400 text-gray-600 hover:bg-gray-50 font-semibold text-xs"
-              onClick={() => handleQuickLogin('client')}
-              disabled={isLoading}
-            >
-              John (Client)
-            </Button>
           </div>
 
           <p className="text-xs text-center text-muted-foreground mt-6">Powered by SJ Innovation AI</p>
