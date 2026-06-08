@@ -122,3 +122,9 @@ Living document of all features currently shipped in this app. Update this file 
 
 ## Maintenance rule
 Every PR/change that adds or materially changes a user-facing feature must update this file in the same commit. Group entries under the appropriate section (add a new section if needed). Keep entries one line and user-facing.
+
+## Magic Link Upload
+- Public `/upload/:token` route — no login required; clients open the link and upload requested documents directly.
+- Admins generate, copy, and email links from **Client Detail → Magic Links** tab; per-document Copy Link / Send via Email actions and a "Send All Pending" shortcut.
+- Link activity (generate / email) is recorded in the activity log; per-session "Link sent" indicators surface status before uploads arrive.
+- Client-account login is deprecated in favor of magic links (the `/portal` route is retained but no longer surfaced from the login screen).
