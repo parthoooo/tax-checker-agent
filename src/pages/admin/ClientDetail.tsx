@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send } from 'lucide-react';
 import ReminderModal from '@/components/common/ReminderModal';
 import InputSheet from '@/components/client/InputSheet';
 import TimeTracker from '@/components/client/TimeTracker';
@@ -43,6 +43,7 @@ const ClientDetail: React.FC = () => {
   const [reminderOpen, setReminderOpen] = useState(false);
   const [note, setNote] = useState('');
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [sentReqIds, setSentReqIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!id) return;
@@ -181,6 +182,7 @@ const ClientDetail: React.FC = () => {
             </TabsTrigger>
             <TabsTrigger value="activity">Activity Log</TabsTrigger>
             <TabsTrigger value="notes">Internal Notes</TabsTrigger>
+            <TabsTrigger value="magic-links">Magic Links</TabsTrigger>
           </TabsList>
 
           {/* Document Checklist */}
