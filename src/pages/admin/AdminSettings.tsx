@@ -32,7 +32,7 @@ const docTypes = [
 
 const AdminSettings: React.FC = () => {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [firmName, setFirmName] = useState('Broder-Mansoor & Associates');
+  const [firmName, setFirmName] = useState('Broder Mansoor Muqtadir, Inc.');
 
   return (
     <PageShell>

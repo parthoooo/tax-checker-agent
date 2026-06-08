@@ -77,8 +77,7 @@ const AppSidebar: React.FC = () => {
   const SidebarBody = (
     <div className="flex flex-col h-full bg-[#0f1f3d] text-white w-64">
       <div className="px-6 py-6 border-b border-white/10">
-        <h2 className="text-lg font-bold tracking-tight">Broder-Mansoor</h2>
-        <p className="text-xs text-blue-200/70 mt-0.5">& Associates</p>
+        <h2 className="text-lg font-bold tracking-tight">Broder Mansoor Muqtadir, Inc.</h2>
         {user.role !== 'client' && (
           <p className="text-xs text-blue-300/60 mt-1.5">
             {user.name} · {user.role === 'admin' ? 'Admin' : 'Preparer'}

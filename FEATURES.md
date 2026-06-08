@@ -1,4 +1,4 @@
-# Broder-Mansoor Portal — Features
+# Broder Mansoor Muqtadir, Inc. Portal — Features
 
 Living document of all features currently shipped in this app. Update this file in the same change whenever a feature is added, removed, or materially changed.
 
@@ -87,11 +87,11 @@ Living document of all features currently shipped in this app. Update this file 
 - Auto stops on unmount; displays live elapsed time
 
 ## Branding
-- "Broder-Mansoor" tab title and headers
+- "Broder Mansoor Muqtadir, Inc." tab title and headers
 - "Powered by SJ Innovation AI" footer
 
 ## Navigation
-- Persistent dark navy sidebar with Broder-Mansoor branding and "Powered by SJ Innovation AI" footer
+- Persistent dark navy sidebar with Broder Mansoor Muqtadir, Inc. branding and "Powered by SJ Innovation AI" footer
 - Admin sidebar: Dashboard, Clients, AI Flags, Activity Log, Email Queue, Admin, Dev Docs, Profile, Logout
 - Preparer sidebar: Dashboard, AI Flags, Activity Log, Email Queue, Profile, Logout
 - Client sidebar: My Documents, Profile, Logout
