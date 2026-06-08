@@ -6,7 +6,7 @@ import {
   FolderOpen, Menu, X, Mail, FileCode2, Bell
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { countPendingEmailDrafts } from '@/lib/db';
+import { countPendingEmailDrafts, countPendingReminderDrafts } from '@/lib/db';
 
 interface NavItem {
   to: string;
@@ -26,17 +26,10 @@ const AppSidebar: React.FC = () => {
   useEffect(() => {
     if (!user || user.role === 'client') return;
     countPendingEmailDrafts().then(setPendingEmails).catch(() => {});
-    const loadReminderCount = () => {
-      try {
-        const stored = localStorage.getItem('rm_pending');
-        const arr = stored ? JSON.parse(stored) : [];
-        setPendingReminders(Array.isArray(arr) ? arr.length : 0);
-      } catch { setPendingReminders(0); }
-    };
-    loadReminderCount();
+    countPendingReminderDrafts().then(setPendingReminders).catch(() => {});
     const interval = setInterval(() => {
       countPendingEmailDrafts().then(setPendingEmails).catch(() => {});
-      loadReminderCount();
+      countPendingReminderDrafts().then(setPendingReminders).catch(() => {});
     }, 30_000);
     return () => clearInterval(interval);
   }, [user]);
@@ -47,10 +40,10 @@ const AppSidebar: React.FC = () => {
     { to: '/dashboard', label: 'Dashboard',   icon: LayoutDashboard },
     { to: '/clients',   label: 'All Clients', icon: Users },
     { to: '/flags',     label: 'AI Flags',    icon: Flag },
-    { to: '/email-queue', label: 'Email Queue', icon: Mail, badge: pendingEmails },
-    { to: '/reminders', label: 'Reminders', icon: Bell, badge: pendingReminders },
-    { to: '/activity',  label: 'Activity Log', icon: ListChecks },
-    { to: '/admin',     label: 'Admin',        icon: Settings, adminOnly: true },
+    { to: '/email-queue', label: 'Outbox',      icon: Mail, badge: pendingEmails },
+    { to: '/reminders',   label: 'Reminders',   icon: Bell, badge: pendingReminders },
+    { to: '/activity',    label: 'Activity Log', icon: ListChecks },
+    { to: '/admin',       label: 'Admin',        icon: Settings, adminOnly: true },
     { to: '/dev-docs',  label: 'Dev Docs',     icon: FileCode2, adminOnly: true },
     { to: '/profile',   label: 'Profile',      icon: User },
   ];
@@ -58,7 +51,7 @@ const AppSidebar: React.FC = () => {
   const preparerNav: NavItem[] = [
     { to: '/dashboard',   label: 'My Clients',  icon: Users },
     { to: '/flags',       label: 'AI Flags',    icon: Flag },
-    { to: '/email-queue', label: 'Email Queue', icon: Mail, badge: pendingEmails },
+    { to: '/email-queue', label: 'Outbox',       icon: Mail, badge: pendingEmails },
     { to: '/reminders',   label: 'Reminders',   icon: Bell, badge: pendingReminders },
     { to: '/activity',    label: 'Activity Log', icon: ListChecks },
     { to: '/profile',     label: 'Profile',      icon: User },

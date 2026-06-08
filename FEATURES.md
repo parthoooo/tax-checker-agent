@@ -58,9 +58,9 @@ Living document of all features currently shipped in this app. Update this file 
 - Cross-client timeline from `activity_log` with search by client and AI/Staff/Client type filter
 - Color-coded actor avatars
 
-## Email Queue (`/email-queue`, admin + preparer)
-- Review AI-drafted client emails from `email_drafts`
-- Pending vs Sent tabs
+## Outbox (`/email-queue`, admin + preparer)
+- Renamed from "Email Queue" — shows all AI-drafted emails where `type = 'outbox'` (AI flags, wrong year, duplicates, etc.)
+- Pending vs Sent tabs; "Generate Demo Emails" seeder stamps `type: 'outbox'`
 - Edit subject + body in modal, then Approve & Send or Dismiss
 - Approval logs to `activity_log`
 
@@ -115,14 +115,16 @@ Living document of all features currently shipped in this app. Update this file 
 
 ## Reminder System
 - `/reminders` page with three tabs: Pending Approval, Cadence Settings, History
-- AI-drafted email queue — staff reviews and approves before any email is sent
-- Inline email editing before approval
-- Global cadence settings: first reminder delay, repeat interval, max sends
+- Pending Approval tab backed by Supabase `email_drafts` filtered to `type = 'reminder'` — distinct from Outbox
+- "Seed Demo Reminders" button creates `type: 'reminder'` drafts for testing
+- `email_drafts.type` discriminator (`'outbox' | 'reminder'`) separates the two workflows; null treated as outbox for backwards compat
+- Inline email editing before approval; actions write back to Supabase + log to `activity_log`
+- Global cadence settings: first reminder delay, repeat interval, max sends (localStorage)
 - "Exclude Abad's long-term clients" toggle — those clients marked Manual Only
-- Per-client reminder overrides and Do Not Remind flag
-- Reminder history log with sent/dismissed status
-- Sidebar badge showing count of pending approvals
-- AdminDashboard "Remind" button updated to "Approve & Send" language
+- Per-client reminder overrides and Do Not Remind flag (localStorage)
+- Reminder history log with sent/dismissed status (localStorage + seeded data)
+- Sidebar Reminders badge reads `countPendingReminderDrafts()` from Supabase
+- AdminDashboard "Remind" button updated to "Approve & Send" language; logs Manual Send to history
 
 ## Tech / UI
 - React 18 + Vite + TypeScript + Tailwind + shadcn/ui
