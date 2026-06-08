@@ -139,6 +139,18 @@ Living document of all features currently shipped in this app. Update this file 
 - Client pre-selection via `?client=` query param — AdminDashboard modal "Open in Vault →" button wires this
 - Sidebar "Document Vault" nav item (folder icon) for admin + preparer
 
+## E-Signatures (`/signatures`, admin + preparer)
+- SignNow integration stub in `src/utils/signNowService.ts` — clearly marked `SIGNNOW INTEGRATION POINT` comments; only this file changes when the real API key arrives
+- Three tabs: Pending (copy link, resend email, void), Completed (signer name, IP, timestamp, download receipt), Send Request (client dropdown, doc type auto-fill, delivery radio, optional note)
+- Send Request tab pre-selects client via `?client=` query param (wired from Vault "Request Signature" button)
+- Mock data seeded to localStorage on first visit (`sig_seeded` guard)
+- Public signing page `/sign/:id` — no auth required; handles Pending → Confirmed → Declined flow
+- Canvas signature pad (mouse + passive:false touch events for mobile)
+- IP captured from `api.ipify.org` with `'0.0.0.0'` fallback; never blocks signing
+- Signature status column on AdminDashboard client table (Signed/Pending/Declined/Not sent)
+- "Request Signature" button on VaultPage right-panel header → `/signatures?client=<slug>`
+- E-Signatures nav item (PenLine icon) in admin + preparer sidebar
+
 ## Tech / UI
 - React 18 + Vite + TypeScript + Tailwind + shadcn/ui
 - React Router v6 with nested layout routes

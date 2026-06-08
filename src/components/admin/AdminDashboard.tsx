@@ -5,8 +5,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Search, Users, FileText, AlertTriangle, CheckCircle, LogOut, Download, Mail, Clock, DollarSign, Loader2
+  Search, Users, FileText, AlertTriangle, CheckCircle, LogOut, Download, Mail, Clock, DollarSign, Loader2, PenLine
 } from 'lucide-react';
+import { loadSignatureRequests } from '@/utils/signNowService';
 import ClientDetailModal from './ClientDetailModal';
 import AgentTeamBanner from '@/components/ai/AgentTeamBanner';
 import AgentActivityFeed from '@/components/ai/AgentActivityFeed';
@@ -126,6 +127,13 @@ const AdminDashboard: React.FC = () => {
     : t === 'duplicate' ? '📋 Duplicates Detected'
     : t === 'unexpected' ? '📂 Unnecessary File'
     : '📋 Missing Documents';
+
+  const sigStatus = (email: string) => {
+    const reqs = loadSignatureRequests();
+    const match = reqs.find(r => r.clientEmail.toLowerCase() === email.toLowerCase());
+    if (!match) return null;
+    return match.status;
+  };
 
   const flagActionLabel = (t: string) =>
     t === 'wrong-year' ? '📧 Send Correction Request'
@@ -256,6 +264,7 @@ const AdminDashboard: React.FC = () => {
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Issues</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Last Activity</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Signature</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Actions</th>
                       </tr>
                     </thead>
@@ -279,6 +288,15 @@ const AdminDashboard: React.FC = () => {
                             {c.issues > 0 ? <Badge variant="destructive">{c.issues} issues</Badge> : <span className="text-green-600 text-sm">No issues</span>}
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600">{new Date(c.last_activity).toLocaleDateString()}</td>
+                          <td className="py-3 px-4">
+                            {(() => {
+                              const s = sigStatus(c.email);
+                              if (s === 'signed') return <span className="flex items-center gap-1 text-green-700 text-xs font-medium"><PenLine className="w-3.5 h-3.5" />Signed</span>;
+                              if (s === 'pending') return <span className="flex items-center gap-1 text-amber-600 text-xs font-medium"><PenLine className="w-3.5 h-3.5" />Pending</span>;
+                              if (s === 'declined') return <span className="flex items-center gap-1 text-red-500 text-xs font-medium"><PenLine className="w-3.5 h-3.5" />Declined</span>;
+                              return <span className="text-gray-400 text-xs">Not sent</span>;
+                            })()}
+                          </td>
                           <td className="py-3 px-4">
                             <div className="flex gap-2">
                               <Button variant="outline" size="sm" onClick={() => setSelectedClient(c.id)}>View Details</Button>
