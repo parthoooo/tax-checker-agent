@@ -11,6 +11,7 @@ import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy
 import ReminderModal from '@/components/common/ReminderModal';
 import InputSheet from '@/components/client/InputSheet';
 import TimeTracker from '@/components/client/TimeTracker';
+import MagicLinksPanel from '@/components/admin/MagicLinksPanel';
 import { toast } from 'sonner';
 import {
   fetchClientById,
