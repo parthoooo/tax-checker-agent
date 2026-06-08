@@ -113,6 +113,17 @@ Living document of all features currently shipped in this app. Update this file 
 - Seeder is idempotent — missing extra clients are inserted, and per-client data is cleared and re-seeded on each run
 - **Seed Demo Emails** button on `/email-queue` adds 2 pending + 1 sent AI-drafted email per active client (populates both Pending and Sent tabs)
 
+## Reminder System
+- `/reminders` page with three tabs: Pending Approval, Cadence Settings, History
+- AI-drafted email queue — staff reviews and approves before any email is sent
+- Inline email editing before approval
+- Global cadence settings: first reminder delay, repeat interval, max sends
+- "Exclude Abad's long-term clients" toggle — those clients marked Manual Only
+- Per-client reminder overrides and Do Not Remind flag
+- Reminder history log with sent/dismissed status
+- Sidebar badge showing count of pending approvals
+- AdminDashboard "Remind" button updated to "Approve & Send" language
+
 ## Tech / UI
 - React 18 + Vite + TypeScript + Tailwind + shadcn/ui
 - React Router v6 with nested layout routes
