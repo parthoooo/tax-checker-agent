@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Copy, Send, Link2, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateMagicToken, fetchClientById, logActivity } from '@/lib/db';
+import { generateMagicToken, logActivity } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
 type Client    = Database['public']['Tables']['clients']['Row'];
@@ -24,18 +25,36 @@ const MagicLinksPanel: React.FC<Props> = ({
   client, requirements, uploads, sentReqIds, setSentReqIds, onTokenRefresh,
 }) => {
   const [generating, setGenerating] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
 
-  const token = client.magic_link_token;
-  const expiresAt = client.token_expires_at ? new Date(client.token_expires_at) : null;
-  const isActive = !!token && !!expiresAt && expiresAt > new Date();
+  const loadActiveToken = async () => {
+    const { data } = await (supabase as any)
+      .from('magic_link_tokens')
+      .select('token, expires_at')
+      .eq('client_id', client.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      setToken(data.token);
+      setExpiresAt(data.expires_at ? new Date(data.expires_at) : null);
+    } else {
+      setToken(null);
+      setExpiresAt(null);
+    }
+  };
+
+  useEffect(() => { loadActiveToken(); }, [client.id]);
+
+  const isActive = !!token && (!expiresAt || expiresAt > new Date());
   const url = token ? `https://brodermansoor.buildyourai.consulting/upload/${token}` : '';
 
   const handleGenerate = async () => {
     setGenerating(true);
     try {
       await generateMagicToken(client.id);
-      const fresh = await fetchClientById(client.id);
-      if (fresh) onTokenRefresh(fresh);
+      await loadActiveToken();
       await logActivity({ client_id: client.id, actor: 'Staff', actor_type: 'staff', action: 'Generated magic link' });
       toast.success(isActive ? 'Link regenerated' : 'Magic link generated');
     } catch (e: any) {
@@ -95,7 +114,9 @@ const MagicLinksPanel: React.FC<Props> = ({
               <p className="text-sm font-medium">Master upload link</p>
               <p className="text-xs text-gray-500 mt-0.5">
                 {isActive
-                  ? `Active until ${expiresAt!.toLocaleDateString()} at ${expiresAt!.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  ? (expiresAt
+                      ? `Active until ${expiresAt.toLocaleDateString()} at ${expiresAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Active link ready')
                   : 'No active link. Generate one to share with the client.'}
               </p>
             </div>
