@@ -51,6 +51,23 @@ const ReminderModal: React.FC<Props> = ({
     }
   }, [open, clientName]);
 
+  const logToReminderHistory = (email: string, name: string, docs: string[]) => {
+    try {
+      const stored = localStorage.getItem('rm_history');
+      const history = stored ? JSON.parse(stored) : [];
+      history.unshift({
+        id: `h-${Date.now()}`,
+        date: new Date().toISOString(),
+        clientName: name,
+        preparer: user?.name ?? 'Staff',
+        type: 'Manual Send',
+        docs,
+        status: 'Sent',
+      });
+      localStorage.setItem('rm_history', JSON.stringify(history));
+    } catch { /* ignore */ }
+  };
+
   const handleSend = async () => {
     const subject = 'Action Required: Missing Tax Documents';
     try {
@@ -71,6 +88,7 @@ const ReminderModal: React.FC<Props> = ({
         });
       }
 
+      logToReminderHistory(clientEmail ?? '', clientName ?? '', missingDocs);
       toast.success('Email sent', { description: `Reminder sent to ${clientEmail}` });
       onClose();
     } catch (err: any) {
@@ -96,12 +114,17 @@ const ReminderModal: React.FC<Props> = ({
                 <span className="text-sm">Drafting email…</span>
               </div>
             ) : (
-              <Textarea
-                rows={9}
-                value={body}
-                onChange={e => setBody(e.target.value)}
-                className="text-sm"
-              />
+              <>
+                <Textarea
+                  rows={9}
+                  value={body}
+                  onChange={e => setBody(e.target.value)}
+                  className="text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1.5 italic">
+                  This draft was prepared by the AI Follow-up Agent. Review before sending.
+                </p>
+              </>
             )}
           </div>
         )}
@@ -118,7 +141,7 @@ const ReminderModal: React.FC<Props> = ({
           </Button>
           <div className="flex gap-2 ml-auto">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSend} disabled={drafting || !body}>✅ Send Email</Button>
+            <Button onClick={handleSend} disabled={drafting || !body}>✅ Approve & Send</Button>
           </div>
         </DialogFooter>
       </DialogContent>
