@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { formatAuthPasswordError, SIGNUP_PASSWORD_HINT, validateSignupPassword } from '@/lib/passwordPolicy';
+import { formatAuthPasswordError, evaluateSignupPassword, validateSignupPassword } from '@/lib/passwordPolicy';
+import PasswordStrengthMeter from '@/components/auth/PasswordStrengthMeter';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -21,9 +22,11 @@ const Login: React.FC = () => {
     setIsLoading(true);
     try {
       if (mode === 'signup') {
-        const passwordError = validateSignupPassword(password);
-        if (passwordError) {
-          toast.error('Choose a stronger password', { description: passwordError });
+        const evaluation = evaluateSignupPassword(password);
+        if (!evaluation.acceptable) {
+          toast.error('Choose a stronger password', {
+            description: evaluation.summary ?? validateSignupPassword(password) ?? 'Password does not meet requirements.',
+          });
           setIsLoading(false);
           return;
         }
@@ -122,10 +125,14 @@ const Login: React.FC = () => {
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               />
               {mode === 'signup' && (
-                <p className="text-xs text-muted-foreground">{SIGNUP_PASSWORD_HINT}</p>
+                <PasswordStrengthMeter password={password} />
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isLoading || (mode === 'signup' && password.length > 0 && !evaluateSignupPassword(password).acceptable)}
+            >
               {isLoading ? 'Please wait…' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
           </form>

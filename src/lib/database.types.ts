@@ -15,6 +15,9 @@ interface ClientRow {
   last_activity: string;
   auth_user_id: string | null;
   business_type: 'employee' | 'freelancer' | 'partnership';
+  profession_locked: boolean;
+  prior_year_upload_enabled: boolean;
+  year_upload_unlocks: string[];
   created_at: string;
 }
 

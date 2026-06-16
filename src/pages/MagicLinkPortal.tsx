@@ -216,15 +216,16 @@ const MagicLinkPortal: React.FC = () => {
   }, [client, requirements, refreshAnalysis]);
 
   const verifiedCount = requirements.filter(r => r.upload?.ai_status === 'verified').length;
+  const uploadedCount = requirements.filter(r => r.required && r.upload).length;
   const totalRequired = requirements.filter(r => r.required).length;
-  const allVerified   = totalRequired > 0 && verifiedCount === totalRequired;
-  const alreadySubmitted = submitted || (client?.status === 'complete' && allVerified);
-  const missingNotVerified = requirements.filter(
-    r => r.required && (!r.upload || r.upload.ai_status !== 'verified'),
+  const allSlotsFilled = totalRequired > 0 && uploadedCount === totalRequired;
+  const alreadySubmitted = submitted || (client?.status === 'complete' && allSlotsFilled);
+  const missingNotUploaded = requirements.filter(
+    r => r.required && !r.upload,
   );
 
   const handleSubmitForReview = async () => {
-    if (!token || !client || !allVerified || submitting || alreadySubmitted) return;
+    if (!token || !client || !allSlotsFilled || submitting || alreadySubmitted) return;
     setSubmitting(true);
     try {
       const result = await submitDocumentsViaMagicLink(token);
@@ -236,7 +237,7 @@ const MagicLinkPortal: React.FC = () => {
         clientName: client.name,
         clientEmail: client.email,
         documentNames: requirements
-          .filter(r => r.upload?.ai_status === 'verified')
+          .filter(r => r.upload)
           .map(r => r.name),
       }).catch(() => {
         toast.warning('Submitted, but preparer notification could not be queued.', {
@@ -283,8 +284,9 @@ const MagicLinkPortal: React.FC = () => {
   }
 
   const verifiedDisplay = verifiedCount;
+  const uploadedDisplay = uploadedCount;
   const total = totalRequired;
-  const pct = total > 0 ? Math.round((verifiedDisplay / total) * 100) : 0;
+  const pct = total > 0 ? Math.round((uploadedDisplay / total) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -313,12 +315,15 @@ const MagicLinkPortal: React.FC = () => {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700">Documents received</span>
-              <span className="text-sm text-gray-500">{verifiedDisplay} of {total} verified</span>
+              <span className="text-sm text-gray-500">
+                {uploadedDisplay} of {total} uploaded
+                {verifiedDisplay < uploadedDisplay && ` · ${verifiedDisplay} verified`}
+              </span>
             </div>
             <Progress value={pct} className="h-2" />
-            {allVerified && !alreadySubmitted && (
+            {allSlotsFilled && !alreadySubmitted && (
               <p className="text-sm text-green-700 font-medium mt-2 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" /> All documents verified — ready to submit
+                <CheckCircle2 className="w-4 h-4" /> All slots filled — ready to submit
               </p>
             )}
             {alreadySubmitted && (
@@ -343,18 +348,15 @@ const MagicLinkPortal: React.FC = () => {
         </div>
 
         {/* Still missing / not verified */}
-        {missingNotVerified.length > 0 && (
+        {missingNotUploaded.length > 0 && (
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="pt-4 pb-4">
-              <p className="text-sm font-medium text-amber-800 mb-2">Still needed or has issues:</p>
+              <p className="text-sm font-medium text-amber-800 mb-2">Still missing uploads:</p>
               <ul className="space-y-1">
-                {missingNotVerified.map(r => (
+                {missingNotUploaded.map(r => (
                   <li key={r.id} className="text-sm text-amber-700 flex items-center gap-2">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     {r.name}
-                    {r.upload && r.upload.ai_status !== 'verified' && (
-                      <span className="text-xs">(needs replacement)</span>
-                    )}
                   </li>
                 ))}
               </ul>
@@ -376,12 +378,12 @@ const MagicLinkPortal: React.FC = () => {
               <>
                 <h3 className="text-lg font-medium">Ready to Submit?</h3>
                 <p className="text-sm text-muted-foreground">
-                  Submit when every document shows <strong>Verified</strong>. Replace any flagged files first.
+                  Submit when every required slot has a file. Flagged documents are OK — your preparer will review them.
                 </p>
                 <Button
                   size="lg"
                   className="bg-green-600 hover:bg-green-700"
-                  disabled={!allVerified || submitting}
+                  disabled={!allSlotsFilled || submitting}
                   onClick={handleSubmitForReview}
                 >
                   {submitting ? (

@@ -9,6 +9,7 @@ import {
   type BusinessType,
   type DefaultRequirement,
 } from './taxConfig';
+import { syncChecklistToProfession } from './clientPortalSettings';
 
 // Loosely-typed handle for insert/update call sites. RLS enforces safety.
 const supabase: any = typedSupabase;
@@ -63,17 +64,19 @@ export async function submitDocumentsForReview(
     clientName: string;
     clientEmail: string;
     actorName: string;
-    verifiedCount: number;
+    uploadedCount: number;
     requiredCount: number;
     documentNames: string[];
+    taxYear?: string;
   },
 ): Promise<void> {
   const now = new Date().toISOString();
+  const taxYear = params.taxYear ?? CURRENT_TAX_YEAR;
 
   const { error: clientErr } = await supabase
     .from('clients')
     .update({
-      documents_submitted: params.verifiedCount,
+      documents_submitted: params.uploadedCount,
       documents_required: params.requiredCount,
       status: 'complete',
       issues: 0,
@@ -86,13 +89,14 @@ export async function submitDocumentsForReview(
     client_id: clientId,
     actor: params.actorName,
     actor_type: 'client',
-    action: `Submitted all ${CURRENT_TAX_YEAR} documents for preparer review`,
+    action: `Submitted all ${taxYear} documents for preparer review`,
   });
 
   await notifyPreparerOfSubmission(clientId, {
     clientName: params.clientName,
     clientEmail: params.clientEmail,
     documentNames: params.documentNames,
+    taxYear,
   });
 }
 
@@ -102,20 +106,22 @@ export async function notifyPreparerOfSubmission(
     clientName: string;
     clientEmail: string;
     documentNames: string[];
+    taxYear?: string;
   },
 ): Promise<void> {
+  const taxYear = params.taxYear ?? CURRENT_TAX_YEAR;
   const docList = params.documentNames.map(n => `• ${n}`).join('\n');
   await createEmailDraft({
     client_id: clientId,
     to_email: PREPARER_NOTIFY_EMAIL,
     from_label: params.clientName,
-    subject: `${params.clientName} submitted ${CURRENT_TAX_YEAR} tax documents`,
+    subject: `${params.clientName} submitted ${taxYear} tax documents`,
     body: [
       'Hi team,',
       '',
-      `${params.clientName} (${params.clientEmail}) submitted their ${CURRENT_TAX_YEAR} tax document package for review.`,
+      `${params.clientName} (${params.clientEmail}) submitted their ${taxYear} tax document package for review.`,
       '',
-      'Verified documents:',
+      'Uploaded documents (may include flagged items for your review):',
       docList,
       '',
       'Please review in the client portal.',
@@ -138,16 +144,14 @@ export async function getDocumentSignedUrl(storagePath: string): Promise<string 
 export async function updateClientBusinessType(
   clientId: string,
   businessType: BusinessType,
+  taxYear = CURRENT_TAX_YEAR,
 ): Promise<Client> {
-  const template = getRequirementsForBusinessType(businessType);
+  const { syncChecklistToProfession } = await import('./clientPortalSettings');
+  await syncChecklistToProfession(clientId, taxYear, businessType, { lockProfession: true });
   const { data, error } = await supabase
     .from('clients')
-    .update({
-      business_type: businessType,
-      documents_required: template.length,
-    })
+    .select('*')
     .eq('id', clientId)
-    .select()
     .single();
   if (error) throw error;
   return data;
@@ -352,6 +356,42 @@ async function insertDocumentUploadRow(
   throw error;
 }
 
+/** All uploads for a tax year (includes admin baseline seeds and client uploads). */
+export async function fetchDocumentUploadsForYear(
+  clientId: string,
+  taxYear: string,
+): Promise<DocUpload[]> {
+  const { data, error } = await supabase
+    .from('document_uploads')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('tax_year', taxYear)
+    .order('uploaded_at', { ascending: false });
+
+  if (!error) return dedupeUploadsByRequirement(data ?? []);
+
+  const { data: all, error: e2 } = await supabase
+    .from('document_uploads')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('uploaded_at', { ascending: false });
+  if (e2) throw e2;
+  return dedupeUploadsByRequirement(all ?? []);
+}
+
+function dedupeUploadsByRequirement(uploads: DocUpload[]): DocUpload[] {
+  const seen = new Set<string>();
+  const out: DocUpload[] = [];
+  for (const u of uploads) {
+    const key = u.requirement_id ?? u.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+  }
+  return out;
+}
+
+/** Current-year client uploads only (excludes prior-year baseline seeds). */
 export async function fetchDocumentUploads(
   clientId: string,
   taxYear = CURRENT_TAX_YEAR,
@@ -364,16 +404,17 @@ export async function fetchDocumentUploads(
     .eq('is_prior_year', false)
     .order('uploaded_at', { ascending: false });
 
-  if (!error) return data ?? [];
+  if (!error) return dedupeUploadsByRequirement(data ?? []);
 
-  // Pre-migration Lovable DB: no tax_year / is_prior_year columns
   const { data: all, error: e2 } = await supabase
     .from('document_uploads')
     .select('*')
     .eq('client_id', clientId)
     .order('uploaded_at', { ascending: false });
   if (e2) throw e2;
-  return (all ?? []).filter(u => !(u as DocUpload).is_prior_year);
+  return dedupeUploadsByRequirement(
+    (all ?? []).filter(u => !(u as DocUpload).is_prior_year),
+  );
 }
 
 export async function fetchPriorYearUploads(clientId: string): Promise<DocUpload[]> {
