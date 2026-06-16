@@ -26,11 +26,13 @@ import {
   saveReminder,
   logActivity,
   submitDocumentsForReview,
+  hasClientSubmittedTaxYear,
 } from '@/lib/db';
 import {
   clientCanSelectTaxYear,
   isTaxYearUploadLocked,
   setClientProfessionFromPortal,
+  syncChecklistToProfession,
 } from '@/lib/clientPortalSettings';
 import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
 import {
@@ -69,6 +71,7 @@ const ClientDashboard: React.FC = () => {
   const [yearLockReason, setYearLockReason] = useState<string | undefined>();
   const [pendingProfession, setPendingProfession] = useState<BusinessType>('freelancer');
   const [savingProfession, setSavingProfession] = useState(false);
+  const [yearSubmitted, setYearSubmitted] = useState(false);
 
   const loadData = useCallback(async (taxYear = selectedTaxYear) => {
     if (!session?.user?.id) return;
@@ -89,10 +92,23 @@ const ClientDashboard: React.FC = () => {
     setYearLocked(lock.locked);
     setYearLockReason(lock.reason);
 
-    const [reqs, uploads] = await Promise.all([
-      fetchDocumentRequirements(client.id, taxYear),
+    let reqs = await fetchDocumentRequirements(client.id, taxYear);
+    if (
+      reqs.length === 0
+      && taxYear === PRIOR_TAX_YEAR
+      && client.prior_year_upload_enabled
+    ) {
+      const businessType = (client.business_type ?? 'freelancer') as BusinessType;
+      reqs = await syncChecklistToProfession(client.id, taxYear, businessType, {
+        lockProfession: false,
+      });
+    }
+
+    const [uploads, submitted] = await Promise.all([
       fetchDocumentUploadsForYear(client.id, taxYear),
+      hasClientSubmittedTaxYear(client.id, taxYear),
     ]);
+    setYearSubmitted(submitted);
 
     const uploadsByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
     setDocs(reqs.map(r => ({ ...r, upload: uploadsByReqId.get(r.id) })));
@@ -149,8 +165,8 @@ const ClientDashboard: React.FC = () => {
   const allSlotsFilled = totalCount > 0 && uploadedCount === totalCount;
   const alreadySubmitted =
     selectedTaxYear === CURRENT_TAX_YEAR
-    && clientRecord?.status === 'complete'
-    && allSlotsFilled;
+      ? clientRecord?.status === 'complete' && allSlotsFilled
+      : yearSubmitted && allSlotsFilled;
   const missingDocs    = docs.filter(d => d.required && !d.upload).map(d => `${d.tax_year} ${d.name}`);
   const existingFilenames = docs.filter(d => d.upload).map(d => d.upload!.file_name);
 
@@ -163,12 +179,6 @@ const ClientDashboard: React.FC = () => {
 
   const handleSubmitForReview = async () => {
     if (!clientId || !allSlotsFilled || submitting || alreadySubmitted) return;
-    if (selectedTaxYear !== CURRENT_TAX_YEAR) {
-      toast.error('Submit from current tax year', {
-        description: `Switch to ${CURRENT_TAX_YEAR} to submit your package for preparer review.`,
-      });
-      return;
-    }
     setSubmitting(true);
     try {
       await submitDocumentsForReview(clientId, {
@@ -178,17 +188,25 @@ const ClientDashboard: React.FC = () => {
         uploadedCount,
         requiredCount: totalCount,
         documentNames: docs.filter(d => d.required && d.upload).map(d => d.name),
-        taxYear: CURRENT_TAX_YEAR,
+        taxYear: selectedTaxYear,
       });
-      setClientRecord(prev => prev ? {
-        ...prev,
-        status: 'complete',
-        documents_submitted: uploadedCount,
-        documents_required: totalCount,
-        last_activity: new Date().toISOString(),
-      } : prev);
+      setYearSubmitted(true);
+      if (selectedTaxYear === CURRENT_TAX_YEAR) {
+        setClientRecord(prev => prev ? {
+          ...prev,
+          status: 'complete',
+          documents_submitted: uploadedCount,
+          documents_required: totalCount,
+          last_activity: new Date().toISOString(),
+        } : prev);
+      } else {
+        setClientRecord(prev => prev ? {
+          ...prev,
+          last_activity: new Date().toISOString(),
+        } : prev);
+      }
       toast.success('Documents submitted for review', {
-        description: 'Your preparer has been notified. Flagged items will be reviewed with your package.',
+        description: `Your ${selectedTaxYear} package was sent to your preparer. Flagged items will be reviewed with your upload.`,
       });
     } catch (err: any) {
       toast.error('Submission failed', { description: err?.message ?? 'Please try again.' });
@@ -398,7 +416,7 @@ const ClientDashboard: React.FC = () => {
           <CardHeader>
             <CardTitle>Required Documents — Tax Year {selectedTaxYear}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Upload each required document. Flagged files can still be submitted — your preparer will review them.
+              Upload each required document. Each file is saved as soon as it uploads. Flagged files can still be submitted — your preparer will review them.
             </p>
           </CardHeader>
           <CardContent>
@@ -462,7 +480,7 @@ const ClientDashboard: React.FC = () => {
           </Card>
         )}
 
-        {selectedTaxYear === CURRENT_TAX_YEAR && (
+        {totalCount > 0 && (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center space-y-4">
@@ -471,7 +489,7 @@ const ClientDashboard: React.FC = () => {
                     <CheckCircle className="w-10 h-10 text-green-600 mx-auto" />
                     <h3 className="text-lg font-medium">Submitted for Review</h3>
                     <p className="text-muted-foreground">
-                      Your {CURRENT_TAX_YEAR} documents were sent to your preparer
+                      Your {selectedTaxYear} documents were sent to your preparer
                       {clientRecord?.last_activity && (
                         <> on {new Date(clientRecord.last_activity).toLocaleDateString()}</>
                       )}.
@@ -482,7 +500,7 @@ const ClientDashboard: React.FC = () => {
                   <>
                     <h3 className="text-lg font-medium">Ready to Submit?</h3>
                     <p className="text-muted-foreground">
-                      Submit when every required slot has a file uploaded. Flagged documents are OK — your preparer will review the full package.
+                      Uploads are saved immediately. Submit when every required slot has a file — this notifies your preparer to review your {selectedTaxYear} package. Flagged documents are OK.
                     </p>
                     <Button
                       size="lg"
@@ -495,7 +513,7 @@ const ClientDashboard: React.FC = () => {
                       ) : (
                         <Upload className="w-4 h-4 mr-2" />
                       )}
-                      {submitting ? 'Submitting…' : 'Submit for Review'}
+                      {submitting ? 'Submitting…' : `Submit ${selectedTaxYear} for Review`}
                     </Button>
                   </>
                 )}
