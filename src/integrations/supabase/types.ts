@@ -267,6 +267,7 @@ export type Database = {
           status: string
           subject: string
           to_email: string
+          type: string | null
         }
         Insert: {
           body: string
@@ -279,6 +280,7 @@ export type Database = {
           status?: string
           subject: string
           to_email: string
+          type?: string | null
         }
         Update: {
           body?: string
@@ -291,6 +293,7 @@ export type Database = {
           status?: string
           subject?: string
           to_email?: string
+          type?: string | null
         }
         Relationships: [
           {
@@ -467,17 +470,11 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
-      resolve_magic_link: {
-        Args: { _token: string }
-        Returns: {
-          assigned_preparer: string
-          client_email: string
-          client_id: string
-          client_name: string
-          expires_at: string
-          token_id: string
-        }[]
+      magic_link_allows_client: {
+        Args: { p_client_id: string }
+        Returns: boolean
       }
+      resolve_magic_link: { Args: { p_token: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never
