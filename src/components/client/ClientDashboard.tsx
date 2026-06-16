@@ -15,12 +15,14 @@ import {
   fetchDocumentUploads,
   saveReminder,
   logActivity,
+  submitDocumentsForReview,
 } from '@/lib/db';
+import type { Database } from '@/lib/database.types';
+
+type Client = Database['public']['Tables']['clients']['Row'];
 import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
 import type { ComparisonResult } from '@/lib/documentComparison';
 import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
-import type { Database } from '@/lib/database.types';
-
 type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
 type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
 
@@ -39,6 +41,8 @@ const ClientDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [clientRecord, setClientRecord] = useState<Client | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -52,6 +56,7 @@ const ClientDashboard: React.FC = () => {
     setClientId(client.id);
     setClientEmail(client.email);
     setClientName(client.name);
+    setClientRecord(client);
 
     const [reqs, uploads] = await Promise.all([
       fetchDocumentRequirements(client.id, CURRENT_TAX_YEAR),
@@ -89,8 +94,40 @@ const ClientDashboard: React.FC = () => {
   const totalCount     = docs.filter(d => d.required).length;
   const progress       = totalCount > 0 ? (submittedCount / totalCount) * 100 : 0;
   const allDone        = totalCount > 0 && submittedCount === totalCount;
+  const alreadySubmitted = clientRecord?.status === 'complete' && submittedCount === totalCount;
   const missingDocs    = docs.filter(d => d.required && (!d.upload || d.upload.ai_status !== 'verified')).map(d => `${d.tax_year} ${d.name}`);
   const existingFilenames = docs.filter(d => d.upload).map(d => d.upload!.file_name);
+
+  const handleSubmitForReview = async () => {
+    if (!clientId || !allDone || submitting || alreadySubmitted) return;
+    setSubmitting(true);
+    try {
+      await submitDocumentsForReview(clientId, {
+        clientName,
+        clientEmail,
+        actorName: user?.name ?? 'Client',
+        verifiedCount: submittedCount,
+        requiredCount: totalCount,
+        documentNames: docs
+          .filter(d => d.required && d.upload?.ai_status === 'verified')
+          .map(d => d.name),
+      });
+      setClientRecord(prev => prev ? {
+        ...prev,
+        status: 'complete',
+        documents_submitted: submittedCount,
+        documents_required: totalCount,
+        last_activity: new Date().toISOString(),
+      } : prev);
+      toast.success('Documents submitted for review', {
+        description: 'Your preparer has been notified. They will contact you if anything else is needed.',
+      });
+    } catch (err: any) {
+      toast.error('Submission failed', { description: err?.message ?? 'Please try again.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const sendSelfReminder = async () => {
     if (!clientId) return;
@@ -271,13 +308,39 @@ const ClientDashboard: React.FC = () => {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
-              <h3 className="text-lg font-medium">Ready to Submit?</h3>
-              <p className="text-muted-foreground">
-                Submit unlocks when every required document shows <strong>Verified</strong> (green). Documents with an Issue badge must be replaced first.
-              </p>
-              <Button size="lg" disabled={!allDone} className="bg-green-600 hover:bg-green-700">
-                <Upload className="w-4 h-4 mr-2" />Submit for Review
-              </Button>
+              {alreadySubmitted ? (
+                <>
+                  <CheckCircle className="w-10 h-10 text-green-600 mx-auto" />
+                  <h3 className="text-lg font-medium">Submitted for Review</h3>
+                  <p className="text-muted-foreground">
+                    Your {CURRENT_TAX_YEAR} documents were sent to your preparer
+                    {clientRecord?.last_activity && (
+                      <> on {new Date(clientRecord.last_activity).toLocaleDateString()}</>
+                    )}.
+                    You will be contacted if anything else is needed.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-medium">Ready to Submit?</h3>
+                  <p className="text-muted-foreground">
+                    Submit unlocks when every required document shows <strong>Verified</strong> (green). Documents with an Issue badge must be replaced first.
+                  </p>
+                  <Button
+                    size="lg"
+                    disabled={!allDone || submitting}
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={handleSubmitForReview}
+                  >
+                    {submitting ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
+                    {submitting ? 'Submitting…' : 'Submit for Review'}
+                  </Button>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
