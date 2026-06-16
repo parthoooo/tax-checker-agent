@@ -17,21 +17,38 @@ const supabase: any = typedSupabase;
 type Client = Database['public']['Tables']['clients']['Row'];
 type DocReq = Database['public']['Tables']['document_requirements']['Row'];
 
-/** True when required checklist rows match the profession template (ignores extra rows with uploads). */
+export const PORTAL_TAX_YEARS = [CURRENT_TAX_YEAR, PRIOR_TAX_YEAR] as const;
+export type PortalTaxYear = typeof PORTAL_TAX_YEARS[number];
+
+/** Rows the client portal should show for a profession (excludes admin YoY baseline extras). */
+export function getClientPortalRequirements(
+  reqs: DocReq[],
+  businessType: BusinessType,
+): DocReq[] {
+  const templateTypes = new Set(
+    getRequirementsForBusinessType(businessType).map(t => t.doc_type),
+  );
+  return reqs.filter(r => r.required && templateTypes.has(r.doc_type));
+}
+
+/** True when required checklist rows match the profession template. */
 export function checklistMatchesProfession(
   reqs: DocReq[],
   businessType: BusinessType,
 ): boolean {
   const template = getRequirementsForBusinessType(businessType);
-  const requiredTypes = new Set(
-    reqs.filter(r => r.required).map(r => r.doc_type),
-  );
-  if (requiredTypes.size !== template.length) return false;
-  return template.every(t => requiredTypes.has(t.doc_type));
-}
+  const templateTypes = new Set(template.map(t => t.doc_type));
+  const portalReqs = getClientPortalRequirements(reqs, businessType);
 
-export const PORTAL_TAX_YEARS = [CURRENT_TAX_YEAR, PRIOR_TAX_YEAR] as const;
-export type PortalTaxYear = typeof PORTAL_TAX_YEARS[number];
+  const hasExtraRequired = reqs.some(
+    r => r.required && !templateTypes.has(r.doc_type),
+  );
+  if (hasExtraRequired) return false;
+  if (portalReqs.length !== template.length) return false;
+
+  const types = new Set(portalReqs.map(r => r.doc_type));
+  return template.every(t => types.has(t.doc_type));
+}
 
 export function clientCanSelectTaxYear(client: Client, year: string): boolean {
   if (year === CURRENT_TAX_YEAR) return true;
@@ -100,7 +117,11 @@ export async function isTaxYearUploadLocked(
   };
 }
 
-/** Sync checklist rows to profession template; add missing, remove empty extras. */
+/**
+ * Sync checklist rows to profession template.
+ * Admin YoY baseline rows (extra doc types with uploads) are kept in DB but marked not required
+ * so the client portal only shows profession-appropriate slots.
+ */
 export async function syncChecklistToProfession(
   clientId: string,
   taxYear: string,
@@ -108,6 +129,7 @@ export async function syncChecklistToProfession(
   options: { lockProfession?: boolean; setBy?: 'client' | 'admin' } = {},
 ): Promise<DocReq[]> {
   const template = getRequirementsForBusinessType(businessType);
+  const templateTypes = new Set(template.map(t => t.doc_type));
   const existing = await fetchDocumentRequirements(clientId, taxYear);
   const uploads = await fetchDocumentUploadsForYear(clientId, taxYear);
   const uploadByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
@@ -128,8 +150,26 @@ export async function syncChecklistToProfession(
   }
 
   for (const req of existing) {
-    if (template.some(t => t.doc_type === req.doc_type)) continue;
-    if (uploadByReqId.has(req.id)) continue;
+    if (templateTypes.has(req.doc_type)) {
+      if (!req.required) {
+        await supabase
+          .from('document_requirements')
+          .update({ required: true })
+          .eq('id', req.id);
+      }
+      continue;
+    }
+
+    if (uploadByReqId.has(req.id)) {
+      if (req.required) {
+        await supabase
+          .from('document_requirements')
+          .update({ required: false })
+          .eq('id', req.id);
+      }
+      continue;
+    }
+
     await supabase.from('document_requirements').delete().eq('id', req.id);
   }
 
@@ -154,7 +194,73 @@ export async function syncChecklistToProfession(
     });
   }
 
-  return fetchDocumentRequirements(clientId, taxYear);
+  const refreshed = await fetchDocumentRequirements(clientId, taxYear);
+  return getClientPortalRequirements(refreshed, businessType);
+}
+
+function parseRpcRequirements(data: unknown): DocReq[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data as DocReq[];
+  if (typeof data === 'object' && data !== null && 'error' in data) {
+    throw new Error(String((data as { error: string }).error));
+  }
+  return [];
+}
+
+/** Client session: sync checklist via SECURITY DEFINER RPC (RLS blocks direct writes). */
+export async function resolveClientPortalRequirements(
+  clientId: string,
+  taxYear: string,
+  businessType: BusinessType,
+): Promise<DocReq[]> {
+  const { data, error } = await supabase.rpc('client_ensure_portal_checklist', {
+    p_tax_year: taxYear,
+  });
+
+  if (!error) {
+    return parseRpcRequirements(data);
+  }
+
+  const existing = await fetchDocumentRequirements(clientId, taxYear);
+  return getClientPortalRequirements(existing, businessType);
+}
+
+/** Staff/admin: ensure checklist matches profession (direct DB access). */
+export async function ensureClientPortalChecklist(
+  clientId: string,
+  taxYear: string,
+  businessType: BusinessType,
+): Promise<DocReq[]> {
+  let existing = await fetchDocumentRequirements(clientId, taxYear);
+
+  if (existing.length === 0 && taxYear === PRIOR_TAX_YEAR) {
+    const template = getRequirementsForBusinessType(businessType);
+    const { error } = await supabase.from('document_requirements').insert(
+      template.map(r => ({
+        client_id: clientId,
+        name: r.name,
+        doc_type: r.doc_type,
+        tax_year: taxYear,
+        required: true,
+      })),
+    );
+    if (error) throw error;
+    existing = await fetchDocumentRequirements(clientId, taxYear);
+    return getClientPortalRequirements(existing, businessType);
+  }
+
+  if (!checklistMatchesProfession(existing, businessType)) {
+    return syncChecklistToProfession(clientId, taxYear, businessType, {
+      lockProfession: false,
+    });
+  }
+
+  return getClientPortalRequirements(existing, businessType);
+}
+
+function isMissingRpcError(error: { message?: string } | null): boolean {
+  const msg = (error?.message ?? '').toLowerCase();
+  return msg.includes('does not exist') || msg.includes('could not find the function');
 }
 
 export async function setClientProfessionFromPortal(
@@ -162,10 +268,40 @@ export async function setClientProfessionFromPortal(
   businessType: BusinessType,
   taxYear: string,
 ): Promise<DocReq[]> {
-  return syncChecklistToProfession(clientId, taxYear, businessType, {
-    lockProfession: true,
-    setBy: 'client',
+  const { data, error } = await supabase.rpc('client_update_profession', {
+    p_business_type: businessType,
+    p_lock_profession: true,
   });
+  if (error) {
+    if (!isMissingRpcError(error)) throw error;
+    await updateClientFields(clientId, {
+      business_type: businessType,
+      profession_locked: true,
+    });
+    return resolveClientPortalRequirements(clientId, taxYear, businessType);
+  }
+  const payload = data as { error?: string; requirements_2025?: DocReq[] } | null;
+  if (payload?.error) throw new Error(payload.error);
+  return payload?.requirements_2025
+    ?? resolveClientPortalRequirements(clientId, taxYear, businessType);
+}
+
+/** Client changed profession while admin has unlocked the portal picker. */
+export async function updateClientProfessionFromPortal(
+  clientId: string,
+  businessType: BusinessType,
+): Promise<void> {
+  const { data, error } = await supabase.rpc('client_update_profession', {
+    p_business_type: businessType,
+    p_lock_profession: false,
+  });
+  if (error) {
+    if (!isMissingRpcError(error)) throw error;
+    await updateClientFields(clientId, { business_type: businessType });
+    return;
+  }
+  const payload = data as { error?: string } | null;
+  if (payload?.error) throw new Error(payload.error);
 }
 
 export async function unlockTaxYearUpload(
@@ -189,13 +325,8 @@ export async function setPriorYearUploadEnabled(
   const client = await fetchClientById(clientId);
   if (!client) return;
 
-  const existing = await fetchDocumentRequirements(clientId, PRIOR_TAX_YEAR);
-  if (existing.length > 0) return;
-
   const businessType = (client.business_type ?? 'freelancer') as BusinessType;
-  await syncChecklistToProfession(clientId, PRIOR_TAX_YEAR, businessType, {
-    lockProfession: false,
-  });
+  await ensureClientPortalChecklist(clientId, PRIOR_TAX_YEAR, businessType);
 }
 
 export async function unlockClientProfession(clientId: string): Promise<void> {

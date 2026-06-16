@@ -21,7 +21,6 @@ import type { ComparisonResult } from '@/lib/documentComparison';
 import { toast } from 'sonner';
 import {
   fetchClientByAuthUser,
-  fetchDocumentRequirements,
   fetchDocumentUploadsForYear,
   saveReminder,
   logActivity,
@@ -30,10 +29,10 @@ import {
 } from '@/lib/db';
 import {
   clientCanSelectTaxYear,
-  checklistMatchesProfession,
   isTaxYearUploadLocked,
+  resolveClientPortalRequirements,
   setClientProfessionFromPortal,
-  syncChecklistToProfession,
+  updateClientProfessionFromPortal,
 } from '@/lib/clientPortalSettings';
 import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
 import {
@@ -74,12 +73,19 @@ const ClientDashboard: React.FC = () => {
   const [savingProfession, setSavingProfession] = useState(false);
   const [yearSubmitted, setYearSubmitted] = useState(false);
   const loadRequestRef = useRef(0);
+  const selectedTaxYearRef = useRef(selectedTaxYear);
+
+  useEffect(() => {
+    selectedTaxYearRef.current = selectedTaxYear;
+  }, [selectedTaxYear]);
 
   const loadData = useCallback(async (taxYear: string) => {
     if (!session?.user?.id) return;
 
     const requestId = ++loadRequestRef.current;
-    const isStale = () => requestId !== loadRequestRef.current;
+    const isStale = () =>
+      requestId !== loadRequestRef.current
+      || taxYear !== selectedTaxYearRef.current;
 
     try {
       const client = await fetchClientByAuthUser(session.user.id);
@@ -98,19 +104,14 @@ const ClientDashboard: React.FC = () => {
       setYearLockReason(lock.reason);
 
       const businessType = (client.business_type ?? 'freelancer') as BusinessType;
-      let reqs = await fetchDocumentRequirements(client.id, taxYear);
-      if (isStale()) return;
+      const canLoadYear =
+        taxYear === CURRENT_TAX_YEAR
+        || (taxYear === PRIOR_TAX_YEAR && client.prior_year_upload_enabled);
 
-      if (
-        taxYear === PRIOR_TAX_YEAR
-        && client.prior_year_upload_enabled
-        && !checklistMatchesProfession(reqs, businessType)
-      ) {
-        reqs = await syncChecklistToProfession(client.id, taxYear, businessType, {
-          lockProfession: false,
-        });
-        if (isStale()) return;
-      }
+      const reqs = canLoadYear
+        ? await resolveClientPortalRequirements(client.id, taxYear, businessType)
+        : [];
+      if (isStale()) return;
 
       const [uploads, submitted] = await Promise.all([
         fetchDocumentUploadsForYear(client.id, taxYear),
@@ -149,6 +150,16 @@ const ClientDashboard: React.FC = () => {
     loadData(selectedTaxYear);
   }, [loadData, selectedTaxYear]);
 
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      if (clientId && session?.user?.id) {
+        loadData(selectedTaxYearRef.current);
+      }
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [clientId, loadData, session?.user?.id]);
+
   const refreshAnalysis = useCallback(async () => {
     if (!clientId || !clientName || !clientEmail) return;
     setAnalysisLoading(true);
@@ -176,10 +187,31 @@ const ClientDashboard: React.FC = () => {
       toast.success('Profession saved', {
         description: `Your ${CURRENT_TAX_YEAR} checklist is set for ${BUSINESS_TYPE_LABELS[pendingProfession]}.`,
       });
-      await loadData(CURRENT_TAX_YEAR);
       setSelectedTaxYear(CURRENT_TAX_YEAR);
+      await loadData(CURRENT_TAX_YEAR);
     } catch (err: any) {
       toast.error('Could not save profession', { description: err?.message });
+    } finally {
+      setSavingProfession(false);
+    }
+  };
+
+  const handleUpdateProfession = async () => {
+    if (!clientId || clientRecord?.profession_locked) return;
+    setSavingProfession(true);
+    try {
+      await updateClientProfessionFromPortal(clientId, pendingProfession);
+      toast.success('Profession updated', {
+        description: `Your checklists now match ${BUSINESS_TYPE_LABELS[pendingProfession]}.`,
+      });
+      const updated = await fetchClientByAuthUser(session!.user!.id);
+      if (updated) {
+        setClientRecord(updated);
+        setPendingProfession((updated.business_type ?? 'freelancer') as BusinessType);
+      }
+      await loadData(selectedTaxYear);
+    } catch (err: any) {
+      toast.error('Could not update profession', { description: err?.message });
     } finally {
       setSavingProfession(false);
     }
@@ -382,13 +414,40 @@ const ClientDashboard: React.FC = () => {
           <CardContent className="pt-6 flex flex-wrap items-end gap-4">
             <div className="space-y-2 min-w-[200px]">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Profession</p>
-              <Badge variant="secondary" className="text-sm py-1 px-3">
-                {BUSINESS_TYPE_LABELS[(clientRecord?.business_type ?? 'freelancer') as BusinessType]}
-              </Badge>
-              {clientRecord?.profession_locked && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Locked — contact preparer to change
-                </p>
+              {clientRecord?.profession_locked ? (
+                <>
+                  <Badge variant="secondary" className="text-sm py-1 px-3">
+                    {BUSINESS_TYPE_LABELS[(clientRecord?.business_type ?? 'freelancer') as BusinessType]}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Locked — contact preparer to change
+                  </p>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Select
+                    value={pendingProfession}
+                    onValueChange={v => setPendingProfession(v as BusinessType)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(BUSINESS_TYPE_LABELS) as BusinessType[]).map(key => (
+                        <SelectItem key={key} value={key}>{BUSINESS_TYPE_LABELS[key]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={savingProfession || pendingProfession === clientRecord?.business_type}
+                    onClick={handleUpdateProfession}
+                  >
+                    {savingProfession ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                    Save profession
+                  </Button>
+                </div>
               )}
             </div>
             <div className="space-y-2 min-w-[160px]">
@@ -468,6 +527,10 @@ const ClientDashboard: React.FC = () => {
               <div className="flex justify-center py-10">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
               </div>
+            ) : docs.filter(d => d.required).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No documents are required for {selectedTaxYear} yet. Contact your preparer if you expected a checklist here.
+              </p>
             ) : (
             <div className="grid gap-4">
               {docs.filter(d => d.required).map((doc) => {
