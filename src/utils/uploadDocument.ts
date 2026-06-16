@@ -16,7 +16,13 @@ export async function uploadDocumentToStorage(
   docType: string,
   taxYear: number = CURRENT_TAX_YEAR_NUM,
   upsert = true,
+  magicLinkToken?: string,
 ): Promise<{ success: boolean; storagePath?: string; error?: string }> {
+  if (magicLinkToken) {
+    const { uploadFileViaMagicLink } = await import('@/lib/magicLinkDb');
+    return uploadFileViaMagicLink(magicLinkToken, file, clientId, docType, taxYear, upsert);
+  }
+
   const safeName = file.name.replace(/\s+/g, '_');
   const path = `clients/${clientId}/${taxYear}/${docType}/${safeName}`;
 
