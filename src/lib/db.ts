@@ -5,6 +5,9 @@ import {
   CURRENT_TAX_YEAR,
   PRIOR_TAX_YEAR,
   DEFAULT_CLIENT_REQUIREMENTS,
+  getRequirementsForBusinessType,
+  type BusinessType,
+  type DefaultRequirement,
 } from './taxConfig';
 
 // Loosely-typed handle for insert/update call sites. RLS enforces safety.
@@ -86,6 +89,21 @@ export async function submitDocumentsForReview(
     action: `Submitted all ${CURRENT_TAX_YEAR} documents for preparer review`,
   });
 
+  await notifyPreparerOfSubmission(clientId, {
+    clientName: params.clientName,
+    clientEmail: params.clientEmail,
+    documentNames: params.documentNames,
+  });
+}
+
+export async function notifyPreparerOfSubmission(
+  clientId: string,
+  params: {
+    clientName: string;
+    clientEmail: string;
+    documentNames: string[];
+  },
+): Promise<void> {
   const docList = params.documentNames.map(n => `• ${n}`).join('\n');
   await createEmailDraft({
     client_id: clientId,
@@ -109,6 +127,83 @@ export async function submitDocumentsForReview(
   });
 }
 
+export async function getDocumentSignedUrl(storagePath: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from('documents')
+    .createSignedUrl(storagePath, 3600);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+}
+
+export async function updateClientBusinessType(
+  clientId: string,
+  businessType: BusinessType,
+): Promise<Client> {
+  const template = getRequirementsForBusinessType(businessType);
+  const { data, error } = await supabase
+    .from('clients')
+    .update({
+      business_type: businessType,
+      documents_required: template.length,
+    })
+    .eq('id', clientId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/** Seed empty checklist for a tax year from the client's profession template. */
+export async function applyChecklistTemplate(
+  clientId: string,
+  taxYear: string,
+  businessType?: BusinessType,
+): Promise<DocReq[]> {
+  const template = getRequirementsForBusinessType(businessType);
+  const { data: existing } = await supabase
+    .from('document_requirements')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('tax_year', taxYear)
+    .limit(1);
+
+  if (existing?.length) {
+    throw new Error(`${taxYear} checklist already exists for this client`);
+  }
+
+  const { data, error } = await supabase
+    .from('document_requirements')
+    .insert(
+      template.map(r => ({
+        client_id: clientId,
+        name: r.name,
+        doc_type: r.doc_type,
+        tax_year: taxYear,
+        required: true,
+      })),
+    )
+    .select();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Admin test tool: create verified {prior year} baseline from profession template.
+ * Use before testing YoY comparison for new clients with no last-year history.
+ */
+export async function seedPriorYearTestBaseline(
+  clientId: string,
+  businessType: BusinessType = 'freelancer',
+): Promise<void> {
+  const template = getRequirementsForBusinessType(businessType);
+  const existing = await fetchDocumentRequirements(clientId, PRIOR_TAX_YEAR);
+  if (existing.length > 0) {
+    throw new Error(`${PRIOR_TAX_YEAR} baseline already exists. Reset documents first if you need a fresh baseline.`);
+  }
+
+  await seedPriorYearBaseline(clientId, template);
+}
+
 // ── Document Requirements ──────────────────────────────────────────────────
 
 export async function fetchDocumentRequirements(
@@ -123,10 +218,11 @@ export async function fetchDocumentRequirements(
     .order('created_at');
   if (error) throw error;
   if ((data ?? []).length > 0) return data ?? [];
-  // Pre-sync DB may only have 2024 rows — seed current-year checklist instead of showing prior-year rows
   if (taxYear === CURRENT_TAX_YEAR) {
     try {
-      return await seedDefaultRequirements(clientId, CURRENT_TAX_YEAR);
+      const client = await fetchClientById(clientId);
+      const businessType = (client?.business_type ?? 'freelancer') as BusinessType;
+      return await seedDefaultRequirements(clientId, CURRENT_TAX_YEAR, businessType);
     } catch {
       const { data: legacy } = await supabase
         .from('document_requirements')
@@ -142,11 +238,13 @@ export async function fetchDocumentRequirements(
 export async function seedDefaultRequirements(
   clientId: string,
   taxYear = CURRENT_TAX_YEAR,
+  businessType: BusinessType = 'freelancer',
 ): Promise<DocReq[]> {
+  const template = getRequirementsForBusinessType(businessType);
   const { data, error } = await supabase
     .from('document_requirements')
     .insert(
-      DEFAULT_CLIENT_REQUIREMENTS.map(r => ({
+      template.map(r => ({
         client_id: clientId,
         name: r.name,
         doc_type: r.doc_type,
@@ -156,6 +254,14 @@ export async function seedDefaultRequirements(
     )
     .select();
   if (error) throw error;
+
+  if (taxYear === CURRENT_TAX_YEAR) {
+    await supabase
+      .from('clients')
+      .update({ documents_required: template.length })
+      .eq('id', clientId);
+  }
+
   return data ?? [];
 }
 
@@ -164,7 +270,9 @@ export async function createClientRecord(payload: {
   email: string;
   authUserId: string;
   phone?: string;
+  businessType?: BusinessType;
 }): Promise<Client> {
+  const template = getRequirementsForBusinessType(payload.businessType);
   const { data, error } = await supabase
     .from('clients')
     .insert({
@@ -172,8 +280,9 @@ export async function createClientRecord(payload: {
       email: payload.email,
       phone: payload.phone ?? null,
       auth_user_id: payload.authUserId,
+      business_type: payload.businessType ?? 'freelancer',
       status: 'active',
-      documents_required: DEFAULT_CLIENT_REQUIREMENTS.length,
+      documents_required: template.length,
       documents_submitted: 0,
       issues: 0,
     })
@@ -185,7 +294,7 @@ export async function createClientRecord(payload: {
 
 export async function seedPriorYearBaseline(
   clientId: string,
-  requirements: { name: string; doc_type: string }[],
+  requirements: DefaultRequirement[] = DEFAULT_CLIENT_REQUIREMENTS,
 ): Promise<void> {
   const { data: priorReqs, error: reqErr } = await supabase
     .from('document_requirements')
@@ -409,17 +518,28 @@ export async function resetClientDocuments(clientId: string): Promise<DocReq[]> 
     if (error && !(error.message ?? '').toLowerCase().includes('input_sheet')) throw error;
   }
 
-  const requirements = await seedDefaultRequirements(clientId, CURRENT_TAX_YEAR);
+  const client = await fetchClientById(clientId);
+  const businessType = (client?.business_type ?? 'freelancer') as BusinessType;
+  const requirements = await seedDefaultRequirements(clientId, CURRENT_TAX_YEAR, businessType);
 
   await supabase
     .from('clients')
     .update({
       documents_submitted: 0,
       issues: 0,
+      status: 'active',
       documents_required: requirements.length,
       last_activity: new Date().toISOString(),
     })
     .eq('id', clientId);
+
+  await supabase
+    .from('client_corrections')
+    .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+    .eq('client_id', clientId)
+    .eq('status', 'sent')
+    .then(() => {})
+    .catch(() => {});
 
   return requirements;
 }

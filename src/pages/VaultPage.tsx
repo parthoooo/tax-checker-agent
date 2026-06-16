@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { fetchClients, fetchDocumentRequirements, fetchDocumentUploads } from '@/lib/db';
+import { fetchClients, fetchDocumentRequirements, fetchDocumentUploads, fetchPriorYearUploads } from '@/lib/db';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -230,12 +231,39 @@ const VaultPage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null);
   const [deleting, setDeleting]     = useState(false);
 
-  // Resolve ?client= query param
+  // Resolve ?client= query param (slug, supabaseId, or raw client UUID)
   useEffect(() => {
     const param = searchParams.get('client');
     if (!param) return;
-    const match = MOCK_CLIENTS.find(c => c.slug === param || c.supabaseId === param);
-    if (match) setSelected(match);
+
+    const mockMatch = MOCK_CLIENTS.find(c => c.slug === param || c.supabaseId === param);
+    if (mockMatch) {
+      setSelected(mockMatch);
+      return;
+    }
+
+    if (/^[0-9a-f-]{36}$/i.test(param)) {
+      fetchClients().then(realClients => {
+        const real = realClients.find(c => c.id === param);
+        if (!real) return;
+        const entry: MockClient = {
+          slug: param,
+          name: real.name,
+          email: real.email,
+          docsSubmitted: real.documents_submitted,
+          docsRequired: real.documents_required,
+          clientStatus:
+            real.status === 'complete' ? 'complete'
+            : real.status === 'overdue' ? 'overdue'
+            : 'in_progress',
+          supabaseId: real.id,
+        };
+        setSelected(entry);
+        setClients(prev => (
+          prev.some(c => c.supabaseId === param) ? prev : [...prev, entry]
+        ));
+      }).catch(() => {});
+    }
   }, [searchParams]);
 
   // Enrich mock clients with real Supabase IDs when possible
@@ -254,19 +282,22 @@ const VaultPage: React.FC = () => {
     let realFiles: VaultFile[] = [];
 
     try {
-      // Try to fetch real uploads via Supabase DB (match by name if we have supabaseId)
       const idToQuery = client.supabaseId ?? client.slug;
-      const [reqs, uploads] = await Promise.all([
-        fetchDocumentRequirements(idToQuery),
-        fetchDocumentUploads(idToQuery),
+      const [reqsCurrent, reqsPrior, uploadsCurrent, uploadsPrior] = await Promise.all([
+        fetchDocumentRequirements(idToQuery, CURRENT_TAX_YEAR),
+        fetchDocumentRequirements(idToQuery, PRIOR_TAX_YEAR),
+        fetchDocumentUploads(idToQuery, CURRENT_TAX_YEAR),
+        fetchPriorYearUploads(idToQuery),
       ]);
+      const reqs = [...reqsCurrent, ...reqsPrior];
+      const uploads = [...uploadsCurrent, ...uploadsPrior];
 
       if (uploads.length > 0) {
         realFiles = uploads.map(u => ({
           id: u.id,
           clientId: client.slug,
           docType: reqs.find(r => r.id === u.requirement_id)?.name ?? inferDocType(u.storage_path),
-          taxYear: 2024,
+          taxYear: parseInt(u.tax_year ?? '2025', 10),
           filename: u.file_name,
           size: u.file_size ?? 0,
           aiStatus: mapDbAiStatus(u.ai_status),

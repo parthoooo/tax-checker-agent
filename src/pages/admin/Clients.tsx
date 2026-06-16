@@ -76,7 +76,7 @@ const Clients: React.FC = () => {
     try {
       const { data, error } = await (supabase as any)
         .from('clients')
-        .insert({ name: newName, email: newEmail, phone: newPhone || null, assigned_staff: newStaff || null, status: 'active', documents_submitted: 0, documents_required: 4, issues: 0, last_activity: new Date().toISOString() })
+        .insert({ name: newName, email: newEmail, phone: newPhone || null, assigned_staff: newStaff || null, business_type: 'freelancer', status: 'active', documents_submitted: 0, documents_required: 4, issues: 0, last_activity: new Date().toISOString() })
         .select()
         .single();
       if (error) throw error;
@@ -133,7 +133,7 @@ const Clients: React.FC = () => {
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="overdue">Overdue</TabsTrigger>
-              <TabsTrigger value="complete">Complete</TabsTrigger>
+              <TabsTrigger value="complete">Submitted for Review</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>

@@ -12,7 +12,6 @@ const DEFAULT_REQUIREMENTS = [
   { name: "Schedule C", doc_type: "sched-c" },
 ];
 
-const PRIOR_TAX_YEAR = "2024";
 const CURRENT_TAX_YEAR = "2025";
 
 async function seedClientPortal(
@@ -28,35 +27,7 @@ async function seedClientPortal(
 
   if (existingReqs && existingReqs.length > 0) return;
 
-  const { data: priorReqs } = await admin
-    .from("document_requirements")
-    .insert(
-      DEFAULT_REQUIREMENTS.map((r) => ({
-        client_id: clientId,
-        name: r.name,
-        doc_type: r.doc_type,
-        tax_year: PRIOR_TAX_YEAR,
-        required: true,
-      })),
-    )
-    .select("id, doc_type");
-
-  if (priorReqs?.length) {
-    await admin.from("document_uploads").insert(
-      priorReqs.map((req: { id: string; doc_type: string }) => ({
-        client_id: clientId,
-        requirement_id: req.id,
-        file_name: `${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
-        storage_path: `clients/${clientId}/${PRIOR_TAX_YEAR}/${req.doc_type}/${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
-        file_size: 200000,
-        mime_type: "application/pdf",
-        ai_status: "verified",
-        tax_year: PRIOR_TAX_YEAR,
-        is_prior_year: true,
-      })),
-    );
-  }
-
+  // Current-year checklist only — admin can add 2024 test baseline separately when needed
   await admin.from("document_requirements").insert(
     DEFAULT_REQUIREMENTS.map((r) => ({
       client_id: clientId,
@@ -66,6 +37,11 @@ async function seedClientPortal(
       required: true,
     })),
   );
+
+  await admin
+    .from("clients")
+    .update({ documents_required: DEFAULT_REQUIREMENTS.length })
+    .eq("id", clientId);
 }
 
 async function provisionClient(

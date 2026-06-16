@@ -14,6 +14,7 @@ interface ClientRow {
   reminder_cadence_days: number;
   last_activity: string;
   auth_user_id: string | null;
+  business_type: 'employee' | 'freelancer' | 'partnership';
   created_at: string;
 }
 
@@ -135,6 +136,18 @@ interface SignupRequestRow {
   created_at: string;
 }
 
+interface ClientCorrectionRow {
+  id: string;
+  client_id: string;
+  tax_year: string;
+  comparison_snapshot: Json;
+  staff_message: string | null;
+  status: 'sent' | 'resolved';
+  sent_by: string | null;
+  sent_at: string;
+  resolved_at: string | null;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -222,6 +235,16 @@ export interface Database {
           rejected_reason?: string | null;
         };
         Update: Partial<SignupRequestRow>;
+        Relationships: [];
+      };
+      client_corrections: {
+        Row: ClientCorrectionRow;
+        Insert: Omit<ClientCorrectionRow, 'id' | 'sent_at' | 'resolved_at'> & {
+          id?: string;
+          sent_at?: string;
+          resolved_at?: string | null;
+        };
+        Update: Partial<ClientCorrectionRow>;
         Relationships: [];
       };
     };

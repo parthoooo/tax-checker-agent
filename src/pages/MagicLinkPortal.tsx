@@ -8,13 +8,14 @@ import {
   CheckCircle2, AlertCircle, Clock, Upload, FileText, Loader2, XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { resolveMagicLink } from '@/lib/magicLinkDb';
+import { resolveMagicLink, submitDocumentsViaMagicLink } from '@/lib/magicLinkDb';
 import {
   createDocumentUpload,
   replaceDocumentUpload,
   createAiFlag,
   createEmailDraft,
   logActivity,
+  notifyPreparerOfSubmission,
 } from '@/lib/db';
 import { buildEmailDraftBody } from '@/lib/aiSimulation';
 import { uploadDocumentToStorage } from '@/utils/uploadDocument';
@@ -43,6 +44,8 @@ const MagicLinkPortal: React.FC = () => {
   const [requirements, setRequirements] = useState<ReqWithUpload[]>([]);
   const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const refreshAnalysis = useCallback(async () => {
     if (!client) return;
@@ -66,6 +69,7 @@ const MagicLinkPortal: React.FC = () => {
       if (result === null) { setTokenExpired(true); setLoading(false); return; }
       if (result === 'expired') { setTokenExpired(true); setLoading(false); return; }
       setClient(result.client);
+      setSubmitted(result.client.status === 'complete');
       const uploadsByReq = new Map(result.uploads.map(u => [u.requirement_id, u]));
       setRequirements(result.requirements.map(req => ({
         ...req,
@@ -106,6 +110,18 @@ const MagicLinkPortal: React.FC = () => {
       const stored = await uploadDocumentToStorage(
         file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, !!req.upload,
       );
+      if (stored.storagePath) storagePath = stored.storagePath;
+    } else if (req.upload) {
+      const stored = await uploadDocumentToStorage(
+        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, true,
+      );
+      if (!stored.success) {
+        setRequirements(prev => prev.map(r =>
+          r.id === req.id ? { ...r, uploadState: 'idle' } : r
+        ));
+        toast.error('Upload failed', { description: stored.error });
+        return;
+      }
       if (stored.storagePath) storagePath = stored.storagePath;
     }
 
@@ -199,6 +215,47 @@ const MagicLinkPortal: React.FC = () => {
     }
   }, [client, requirements, refreshAnalysis]);
 
+  const verifiedCount = requirements.filter(r => r.upload?.ai_status === 'verified').length;
+  const totalRequired = requirements.filter(r => r.required).length;
+  const allVerified   = totalRequired > 0 && verifiedCount === totalRequired;
+  const alreadySubmitted = submitted || (client?.status === 'complete' && allVerified);
+  const missingNotVerified = requirements.filter(
+    r => r.required && (!r.upload || r.upload.ai_status !== 'verified'),
+  );
+
+  const handleSubmitForReview = async () => {
+    if (!token || !client || !allVerified || submitting || alreadySubmitted) return;
+    setSubmitting(true);
+    try {
+      const result = await submitDocumentsViaMagicLink(token);
+      if (result.error || !result.ok) {
+        throw new Error(result.error ?? 'Submission failed');
+      }
+
+      await notifyPreparerOfSubmission(client.id, {
+        clientName: client.name,
+        clientEmail: client.email,
+        documentNames: requirements
+          .filter(r => r.upload?.ai_status === 'verified')
+          .map(r => r.name),
+      }).catch(() => {
+        toast.warning('Submitted, but preparer notification could not be queued.', {
+          description: 'Your documents were still marked as submitted.',
+        });
+      });
+
+      setSubmitted(true);
+      setClient({ ...client, status: 'complete' });
+      toast.success('Documents submitted for review', {
+        description: 'Your preparer has been notified. Thank you!',
+      });
+    } catch (err: any) {
+      toast.error('Submission failed', { description: err?.message ?? 'Please try again.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -225,11 +282,9 @@ const MagicLinkPortal: React.FC = () => {
     );
   }
 
-  const submitted = requirements.filter(r => r.upload?.ai_status === 'verified').length;
-  const total = requirements.length;
-  const pct = total > 0 ? Math.round((submitted / total) * 100) : 0;
-  const missing = requirements.filter(r => !r.upload);
-  const allDone = missing.length === 0;
+  const verifiedDisplay = verifiedCount;
+  const total = totalRequired;
+  const pct = total > 0 ? Math.round((verifiedDisplay / total) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -258,12 +313,17 @@ const MagicLinkPortal: React.FC = () => {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700">Documents received</span>
-              <span className="text-sm text-gray-500">{submitted} of {total}</span>
+              <span className="text-sm text-gray-500">{verifiedDisplay} of {total} verified</span>
             </div>
             <Progress value={pct} className="h-2" />
-            {allDone && (
+            {allVerified && !alreadySubmitted && (
               <p className="text-sm text-green-700 font-medium mt-2 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" /> All documents received — thank you!
+                <CheckCircle2 className="w-4 h-4" /> All documents verified — ready to submit
+              </p>
+            )}
+            {alreadySubmitted && (
+              <p className="text-sm text-green-700 font-medium mt-2 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" /> Submitted for preparer review — thank you!
               </p>
             )}
           </CardContent>
@@ -282,22 +342,59 @@ const MagicLinkPortal: React.FC = () => {
           ))}
         </div>
 
-        {/* Still missing */}
-        {!allDone && missing.length > 0 && (
+        {/* Still missing / not verified */}
+        {missingNotVerified.length > 0 && (
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="pt-4 pb-4">
-              <p className="text-sm font-medium text-amber-800 mb-2">Still needed:</p>
+              <p className="text-sm font-medium text-amber-800 mb-2">Still needed or has issues:</p>
               <ul className="space-y-1">
-                {missing.map(r => (
+                {missingNotVerified.map(r => (
                   <li key={r.id} className="text-sm text-amber-700 flex items-center gap-2">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     {r.name}
+                    {r.upload && r.upload.ai_status !== 'verified' && (
+                      <span className="text-xs">(needs replacement)</span>
+                    )}
                   </li>
                 ))}
               </ul>
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardContent className="pt-6 pb-6 text-center space-y-4">
+            {alreadySubmitted ? (
+              <>
+                <CheckCircle2 className="w-10 h-10 text-green-600 mx-auto" />
+                <h3 className="text-lg font-medium">Submitted for Review</h3>
+                <p className="text-sm text-muted-foreground">
+                  Your preparer will review your documents and contact you if anything else is needed.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-medium">Ready to Submit?</h3>
+                <p className="text-sm text-muted-foreground">
+                  Submit when every document shows <strong>Verified</strong>. Replace any flagged files first.
+                </p>
+                <Button
+                  size="lg"
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={!allVerified || submitting}
+                  onClick={handleSubmitForReview}
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4 mr-2" />
+                  )}
+                  {submitting ? 'Submitting…' : 'Submit for Review'}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         <p className="text-xs text-center text-gray-400">
           Questions? Contact your preparer at {client.assigned_preparer ?? 'sj@brodermansoor.com'}
