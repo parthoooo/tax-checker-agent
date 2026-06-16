@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countPendingEmailDrafts, countPendingReminderDrafts } from '@/lib/db';
-import { countPendingSignupRequests } from '@/lib/signupRequests';
 
 interface NavItem {
   to: string;
@@ -23,21 +22,14 @@ const AppSidebar: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pendingEmails, setPendingEmails] = useState(0);
   const [pendingReminders, setPendingReminders] = useState(0);
-  const [pendingSignups, setPendingSignups] = useState(0);
 
   useEffect(() => {
     if (!user || user.role === 'client') return;
     countPendingEmailDrafts().then(setPendingEmails).catch(() => {});
     countPendingReminderDrafts().then(setPendingReminders).catch(() => {});
-    if (user.role === 'admin') {
-      countPendingSignupRequests().then(setPendingSignups).catch(() => {});
-    }
     const interval = setInterval(() => {
       countPendingEmailDrafts().then(setPendingEmails).catch(() => {});
       countPendingReminderDrafts().then(setPendingReminders).catch(() => {});
-      if (user.role === 'admin') {
-        countPendingSignupRequests().then(setPendingSignups).catch(() => {});
-      }
     }, 30_000);
     return () => clearInterval(interval);
   }, [user]);
@@ -47,7 +39,6 @@ const AppSidebar: React.FC = () => {
   const adminNav: NavItem[] = [
     { to: '/dashboard',   label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/clients',     label: 'All Clients',    icon: Users },
-    { to: '/clients/signups', label: 'Sign-up Approvals', icon: User, badge: pendingSignups },
     { to: '/vault',       label: 'Document Vault', icon: FolderOpen },
     { to: '/signatures',  label: 'E-Signatures',   icon: PenLine },
     { to: '/flags',       label: 'AI Flags',       icon: Flag },
