@@ -1,6 +1,11 @@
 import { supabase as typedSupabase } from './supabase';
 import type { Database } from './database.types';
 import { generateInputSheetData } from './aiSimulation';
+import {
+  CURRENT_TAX_YEAR,
+  PRIOR_TAX_YEAR,
+  DEFAULT_CLIENT_REQUIREMENTS,
+} from './taxConfig';
 
 // Loosely-typed handle for insert/update call sites. RLS enforces safety.
 const supabase: any = typedSupabase;
@@ -48,38 +53,184 @@ export async function fetchClientByAuthUser(authUserId: string): Promise<Client 
 
 // ── Document Requirements ──────────────────────────────────────────────────
 
-export async function fetchDocumentRequirements(clientId: string): Promise<DocReq[]> {
+export async function fetchDocumentRequirements(
+  clientId: string,
+  taxYear = CURRENT_TAX_YEAR,
+): Promise<DocReq[]> {
   const { data, error } = await supabase
     .from('document_requirements')
     .select('*')
     .eq('client_id', clientId)
+    .eq('tax_year', taxYear)
     .order('created_at');
+  if (error) throw error;
+  if ((data ?? []).length > 0) return data ?? [];
+  // Pre-sync DB may only have 2024 rows — show them so portal isn't empty
+  if (taxYear === CURRENT_TAX_YEAR) {
+    const { data: legacy } = await supabase
+      .from('document_requirements')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at');
+    return legacy ?? [];
+  }
+  return [];
+}
+
+export async function seedDefaultRequirements(
+  clientId: string,
+  taxYear = CURRENT_TAX_YEAR,
+): Promise<DocReq[]> {
+  const { data, error } = await supabase
+    .from('document_requirements')
+    .insert(
+      DEFAULT_CLIENT_REQUIREMENTS.map(r => ({
+        client_id: clientId,
+        name: r.name,
+        doc_type: r.doc_type,
+        tax_year: taxYear,
+        required: true,
+      })),
+    )
+    .select();
   if (error) throw error;
   return data ?? [];
 }
 
+export async function createClientRecord(payload: {
+  name: string;
+  email: string;
+  authUserId: string;
+  phone?: string;
+}): Promise<Client> {
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone ?? null,
+      auth_user_id: payload.authUserId,
+      status: 'active',
+      documents_required: DEFAULT_CLIENT_REQUIREMENTS.length,
+      documents_submitted: 0,
+      issues: 0,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function seedPriorYearBaseline(
+  clientId: string,
+  requirements: { name: string; doc_type: string }[],
+): Promise<void> {
+  const { data: priorReqs, error: reqErr } = await supabase
+    .from('document_requirements')
+    .insert(
+      requirements.map(r => ({
+        client_id: clientId,
+        name: r.name,
+        doc_type: r.doc_type,
+        tax_year: PRIOR_TAX_YEAR,
+        required: true,
+      })),
+    )
+    .select('id, doc_type');
+  if (reqErr) throw reqErr;
+
+  const uploads = (priorReqs ?? []).map((req: { id: string; doc_type: string }) => ({
+    client_id: clientId,
+    requirement_id: req.id,
+    file_name: `${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
+    storage_path: `clients/${clientId}/${PRIOR_TAX_YEAR}/${req.doc_type}/${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
+    file_size: 200000,
+    mime_type: 'application/pdf',
+    ai_status: 'verified' as const,
+    tax_year: PRIOR_TAX_YEAR,
+    is_prior_year: true,
+    uploaded_by: null,
+  }));
+
+  if (uploads.length > 0) {
+    const { error: upErr } = await supabase.from('document_uploads').insert(uploads);
+    if (upErr) {
+      const legacy = uploads.map(({ tax_year: _t, is_prior_year: _p, ...rest }) => rest);
+      const { error: upErr2 } = await supabase.from('document_uploads').insert(legacy);
+      if (upErr2) throw upErr2;
+    }
+  }
+}
+
 // ── Document Uploads ───────────────────────────────────────────────────────
 
-export async function fetchDocumentUploads(clientId: string): Promise<DocUpload[]> {
+/** Insert upload; omits tax_year/is_prior_year if remote schema not migrated yet. */
+async function insertDocumentUploadRow(
+  payload: Database['public']['Tables']['document_uploads']['Insert'],
+): Promise<DocUpload> {
+  const { data, error } = await supabase.from('document_uploads').insert(payload).select().single();
+  if (!error) return data;
+
+  const msg = (error.message ?? '').toLowerCase();
+  if (msg.includes('tax_year') || msg.includes('is_prior_year') || msg.includes('column')) {
+    const { tax_year: _ty, is_prior_year: _py, ...legacy } = payload as Record<string, unknown>;
+    const { data: d2, error: e2 } = await supabase.from('document_uploads').insert(legacy).select().single();
+    if (e2) throw e2;
+    return d2;
+  }
+  throw error;
+}
+
+export async function fetchDocumentUploads(
+  clientId: string,
+  taxYear = CURRENT_TAX_YEAR,
+): Promise<DocUpload[]> {
   const { data, error } = await supabase
     .from('document_uploads')
     .select('*')
     .eq('client_id', clientId)
+    .eq('tax_year', taxYear)
+    .eq('is_prior_year', false)
     .order('uploaded_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+
+  if (!error) return data ?? [];
+
+  // Pre-migration Lovable DB: no tax_year / is_prior_year columns
+  const { data: all, error: e2 } = await supabase
+    .from('document_uploads')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('uploaded_at', { ascending: false });
+  if (e2) throw e2;
+  return (all ?? []).filter(u => !(u as DocUpload).is_prior_year);
+}
+
+export async function fetchPriorYearUploads(clientId: string): Promise<DocUpload[]> {
+  const { data, error } = await supabase
+    .from('document_uploads')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('tax_year', PRIOR_TAX_YEAR)
+    .order('uploaded_at', { ascending: false });
+
+  if (!error) return data ?? [];
+
+  const { data: all, error: e2 } = await supabase
+    .from('document_uploads')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('uploaded_at', { ascending: false });
+  if (e2) throw e2;
+  return (all ?? []).filter(u => {
+    const row = u as DocUpload;
+    return row.is_prior_year || /_2024\.|\/2024\//.test(row.storage_path ?? row.file_name ?? '');
+  });
 }
 
 export async function createDocumentUpload(
   payload: Database['public']['Tables']['document_uploads']['Insert']
 ): Promise<DocUpload> {
-  const { data, error } = await supabase
-    .from('document_uploads')
-    .insert(payload)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return insertDocumentUploadRow(payload);
 }
 
 export async function updateUploadAiStatus(
@@ -270,7 +421,7 @@ export async function countPendingReminderDrafts(): Promise<number> {
 
 export async function fetchInputSheetEntries(
   clientId: string,
-  taxYear = '2024'
+  taxYear = CURRENT_TAX_YEAR,
 ): Promise<InputSheetEntry[]> {
   const { data, error } = await supabase
     .from('input_sheet_entries')
@@ -294,7 +445,7 @@ export async function verifyInputSheetEntry(id: string): Promise<void> {
 export async function populateInputSheet(
   clientId: string,
   uploads: DocUpload[],
-  taxYear = '2024',
+  taxYear = CURRENT_TAX_YEAR,
   clientName = 'Client',
 ): Promise<void> {
   await supabase

@@ -25,7 +25,7 @@ export interface InputSheetField {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const TAX_YEAR = '2024';
+import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -35,7 +35,7 @@ function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function detectDocType(filename: string): string {
+export function detectDocType(filename: string): string {
   const fn = filename.toLowerCase();
   if (fn.includes('w2') || fn.includes('w-2')) return 'W-2';
   if (fn.includes('1099-nec') || fn.includes('1099nec')) return '1099-NEC';
@@ -86,11 +86,11 @@ export async function simulateValidation(
 
   // Wrong year
   const yearMatch = fn.match(/20\d{2}/);
-  if (yearMatch && yearMatch[0] !== TAX_YEAR) {
+  if (yearMatch && yearMatch[0] !== CURRENT_TAX_YEAR) {
     return {
       outcome: 'wrong-year',
       title: 'Wrong Tax Year Detected',
-      detail: `AI identified this as a ${yearMatch[0]} ${docType}. Tax year ${TAX_YEAR} is required. Please re-upload the correct year.`,
+      detail: `AI identified this as a ${yearMatch[0]} ${docType}. Tax year ${CURRENT_TAX_YEAR} is required. Please re-upload the correct year.`,
       aiStatus: 'flagged',
       confidence: randInt(97, 99),
     };
@@ -101,7 +101,7 @@ export async function simulateValidation(
     return {
       outcome: 'unexpected',
       title: 'Bank Statement Detected',
-      detail: `Bank statement detected. This document is not required for your ${TAX_YEAR} tax filing. Please upload the correct tax document instead.`,
+      detail: `Bank statement detected. This document is not required for your ${CURRENT_TAX_YEAR} tax filing. Please upload the correct tax document instead.`,
       aiStatus: 'flagged',
       confidence: randInt(94, 98),
     };
@@ -156,19 +156,19 @@ export async function simulateValidation(
   // Verified — realistic message based on doc type
   let detail: string;
   if (docType === 'W-2') {
-    detail = `AI analysis complete. ${TAX_YEAR} W-2 from ${pick(EMPLOYERS)} verified — wages and withholding fields detected.`;
+    detail = `AI analysis complete. ${CURRENT_TAX_YEAR} W-2 from ${pick(EMPLOYERS)} verified — wages and withholding fields detected.`;
   } else if (docType === '1099-NEC') {
-    detail = `AI analysis complete. ${TAX_YEAR} 1099-NEC from ${pick(PAYERS_NEC)} verified — nonemployee compensation field detected.`;
+    detail = `AI analysis complete. ${CURRENT_TAX_YEAR} 1099-NEC from ${pick(PAYERS_NEC)} verified — nonemployee compensation field detected.`;
   } else if (docType === '1099-INT') {
-    detail = `AI analysis complete. ${TAX_YEAR} 1099-INT from ${pick(PAYERS_INT)} verified — interest income field detected.`;
+    detail = `AI analysis complete. ${CURRENT_TAX_YEAR} 1099-INT from ${pick(PAYERS_INT)} verified — interest income field detected.`;
   } else if (docType === '1098 Mortgage Interest') {
-    detail = `AI analysis complete. ${TAX_YEAR} 1098 from ${pick(LENDERS)} verified — mortgage interest amount detected.`;
+    detail = `AI analysis complete. ${CURRENT_TAX_YEAR} 1098 from ${pick(LENDERS)} verified — mortgage interest amount detected.`;
   } else if (docType === 'K-1') {
-    detail = `AI analysis complete. ${TAX_YEAR} K-1 verified — partnership income and capital account fields detected.`;
+    detail = `AI analysis complete. ${CURRENT_TAX_YEAR} K-1 verified — partnership income and capital account fields detected.`;
   } else if (docType === 'Schedule C') {
-    detail = `AI analysis complete. ${TAX_YEAR} Schedule C verified — gross revenue and expense fields detected.`;
+    detail = `AI analysis complete. ${CURRENT_TAX_YEAR} Schedule C verified — gross revenue and expense fields detected.`;
   } else {
-    detail = `AI analysis complete. Your ${TAX_YEAR} ${docType} looks correct and has been filed.`;
+    detail = `AI analysis complete. Your ${CURRENT_TAX_YEAR} ${docType} looks correct and has been filed.`;
   }
 
   return {
@@ -198,16 +198,16 @@ export async function generateEmailDraft(
 
   const variations: string[] = [
     // 1 — friendly
-    `Hi ${firstName},\n\nI hope this message finds you well. I'm reaching out regarding your ${TAX_YEAR} tax return preparation. We've received most of your documents, but we're still missing a few items to complete your return:\n\n${bulletList}\n\nPlease upload these at your earliest convenience using your secure portal link. Don't hesitate to reach out if you have any questions.\n\nBest regards,\n${preparerName} | ${firm}`,
+    `Hi ${firstName},\n\nI hope this message finds you well. I'm reaching out regarding your ${CURRENT_TAX_YEAR} tax return preparation. We've received most of your documents, but we're still missing a few items to complete your return:\n\n${bulletList}\n\nPlease upload these at your earliest convenience using your secure portal link. Don't hesitate to reach out if you have any questions.\n\nBest regards,\n${preparerName} | ${firm}`,
 
     // 2 — professional
-    `Dear ${firstName},\n\nThank you for the documents submitted so far for your ${TAX_YEAR} tax return. To proceed with your filing, we require the following additional documents:\n\n${bulletList}\n\nPlease upload these through your client portal. If you have any difficulty locating these documents, please contact our office directly.\n\nSincerely,\n${preparerName} | ${firm}`,
+    `Dear ${firstName},\n\nThank you for the documents submitted so far for your ${CURRENT_TAX_YEAR} tax return. To proceed with your filing, we require the following additional documents:\n\n${bulletList}\n\nPlease upload these through your client portal. If you have any difficulty locating these documents, please contact our office directly.\n\nSincerely,\n${preparerName} | ${firm}`,
 
     // 3 — brief/urgent (forced when >3 docs missing)
-    `Hi ${firstName},\n\nQuick reminder — we're still waiting on ${count || 'a few'} document${count !== 1 ? 's' : ''} to complete your ${TAX_YEAR} tax return:\n\n${bulletList}\n\nThe sooner we receive these, the sooner we can file. Please upload via your portal link.\n\nThanks,\n${preparerName}`,
+    `Hi ${firstName},\n\nQuick reminder — we're still waiting on ${count || 'a few'} document${count !== 1 ? 's' : ''} to complete your ${CURRENT_TAX_YEAR} tax return:\n\n${bulletList}\n\nThe sooner we receive these, the sooner we can file. Please upload via your portal link.\n\nThanks,\n${preparerName}`,
 
     // 4 — final reminder
-    `Dear ${firstName},\n\nThis is a follow-up regarding your outstanding ${TAX_YEAR} tax documents. Our records show the following items are still needed:\n\n${bulletList}\n\nPlease prioritize uploading these documents. If there are any issues obtaining them, please let us know so we can assist.\n\nRegards,\n${preparerName} | ${firm}`,
+    `Dear ${firstName},\n\nThis is a follow-up regarding your outstanding ${CURRENT_TAX_YEAR} tax documents. Our records show the following items are still needed:\n\n${bulletList}\n\nPlease prioritize uploading these documents. If there are any issues obtaining them, please let us know so we can assist.\n\nRegards,\n${preparerName} | ${firm}`,
   ];
 
   if (count > 3) return variations[2];
@@ -322,7 +322,7 @@ export function buildFlagDescription(result: ValidationResult, fileName: string)
   switch (result.outcome) {
     case 'wrong-year': {
       const y = fileName.match(/20\d{2}/)?.[0] ?? 'unknown';
-      return `Uploaded ${fileName} — tax year ${y} detected, ${TAX_YEAR} required.`;
+      return `Uploaded ${fileName} — tax year ${y} detected, ${CURRENT_TAX_YEAR} required.`;
     }
     case 'duplicate':
       return `Duplicate upload detected: ${fileName}. Identical file already exists.`;
@@ -351,7 +351,7 @@ export function buildEmailDraftBody(
       const y = fileName.match(/20\d{2}/)?.[0] ?? 'unknown';
       return {
         subject: `Action Required: Wrong Tax Year — ${fileName}`,
-        body: `Hi ${firstName},\n\nThank you for submitting your documents. Our system detected an issue:\n\n• File uploaded: ${fileName}\n• Issue: This document is for tax year ${y}. We need your ${TAX_YEAR} document.\n\nPlease log back in using your secure link and re-upload the correct version at your earliest convenience.\n\nIf you have any questions, please reply to this email.\n\nThank you,\n${preparer}\n${firm}`,
+        body: `Hi ${firstName},\n\nThank you for submitting your documents. Our system detected an issue:\n\n• File uploaded: ${fileName}\n• Issue: This document is for tax year ${y}. We need your ${CURRENT_TAX_YEAR} document.\n\nPlease log back in using your secure link and re-upload the correct version at your earliest convenience.\n\nIf you have any questions, please reply to this email.\n\nThank you,\n${preparer}\n${firm}`,
       };
     }
     case 'duplicate':

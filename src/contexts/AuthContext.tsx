@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import {
+  createClientRecord,
+  fetchClientByAuthUser,
+  seedDefaultRequirements,
+  seedPriorYearBaseline,
+} from '@/lib/db';
+import { DEFAULT_CLIENT_REQUIREMENTS } from '@/lib/taxConfig';
 
 export type UserRole = 'client' | 'admin' | 'preparer';
 
@@ -16,8 +23,9 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  quickLogin: (role: 'admin' | 'preparer-shawn' | 'preparer-girik' | 'client') => Promise<void>;
+  quickLogin: (role: 'admin' | 'preparer-shawn' | 'preparer-girik' | 'client' | 'client-sean' | 'client-girik') => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -31,11 +39,22 @@ export const useAuth = () => {
 };
 
 const DEMO_CREDENTIALS = {
-  admin:           { email: 'nick@brodermansoor.com',  password: 'password123' },
-  'preparer-shawn': { email: 'shawn@brodermansoor.com', password: 'password123' },
-  'preparer-girik': { email: 'girik@brodermansoor.com', password: 'password123' },
-  client:          { email: 'john.smith@email.com',    password: 'password123' },
+  admin:            { email: 'nick@brodermansoor.com',       password: 'password123' },
+  'preparer-shawn': { email: 'shawn@brodermansoor.com',      password: 'password123' },
+  'preparer-girik': { email: 'girik@brodermansoor.com',      password: 'password123' },
+  client:           { email: 'john.smith@email.com',         password: 'password123' },
+  'client-sean':    { email: 'sean.test@brodermansoor.com',  password: 'password123' },
+  'client-girik':   { email: 'girik.test@brodermansoor.com', password: 'password123' },
 };
+
+async function ensureClientProfile(authUserId: string, email: string, fullName: string): Promise<void> {
+  const existing = await fetchClientByAuthUser(authUserId);
+  if (existing) return;
+
+  const client = await createClientRecord({ name: fullName, email, authUserId });
+  await seedDefaultRequirements(client.id);
+  await seedPriorYearBaseline(client.id, DEFAULT_CLIENT_REQUIREMENTS);
+}
 
 function supabaseUserToAppUser(su: SupabaseUser): User {
   const meta = su.user_metadata ?? {};
@@ -83,6 +102,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
   };
 
+  const signUp = async (email: string, password: string, fullName: string) => {
+    setIsLoading(true);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName, role: 'client' },
+      },
+    });
+    if (error) {
+      setIsLoading(false);
+      throw error;
+    }
+    if (data.user) {
+      await ensureClientProfile(data.user.id, email, fullName);
+    }
+    setIsLoading(false);
+  };
+
   const loginWithGoogle = async () => {
     const { lovable } = await import('@/integrations/lovable');
     const result = await lovable.auth.signInWithOAuth('google', {
@@ -101,7 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, login, loginWithGoogle, quickLogin, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, session, login, signUp, loginWithGoogle, quickLogin, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

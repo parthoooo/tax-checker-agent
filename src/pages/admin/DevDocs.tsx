@@ -87,19 +87,19 @@ const FEATURES: Feature[] = [
     id: 5, module: 'Document Upload',
     feature: 'Client document upload with per-requirement checklist and progress',
     route: '/upload/:token, /portal',
-    prototypeStatus: 'simulation',
+    prototypeStatus: 'built',
     tables: ['document_uploads', 'document_requirements'],
-    effortDays: 3,
-    productionNotes: 'Files are stored in-memory (no Supabase Storage). Production: wire Supabase Storage bucket, generate signed download URLs, enforce file size/type limits.'
+    effortDays: 1,
+    productionNotes: 'Supabase Storage wired. tax_year + is_prior_year columns on document_uploads. Production: enforce file size/type limits, virus scan.'
   },
   {
     id: 6, module: 'AI Validation',
-    feature: 'AI document validation — wrong year, duplicate, unexpected type detection',
-    route: 'auto-triggered on upload',
+    feature: 'AI document validation — classify type/year, wrong year, duplicate, YoY comparison',
+    route: 'analyze-document edge fn + auto on upload',
     prototypeStatus: 'simulation',
     tables: ['document_uploads', 'ai_flags', 'email_drafts'],
-    effortDays: 8,
-    productionNotes: 'Currently filename-based simulation. Production: integrate Claude API (claude-sonnet-4-6) with PDF/image OCR to extract year, employer, amounts. Classify doc type from content, not filename.'
+    effortDays: 5,
+    productionNotes: 'Phase 1: mock filename analyzer in edge function; Claude fallback when ANTHROPIC_API_KEY set. Production: PDF OCR, content-based classification.'
   },
   {
     id: 7, module: 'AI Flags',
@@ -193,12 +193,12 @@ const FEATURES: Feature[] = [
   },
   {
     id: 17, module: 'Client Dashboard',
-    feature: 'Authenticated client view — doc checklist, upload, progress tracking',
+    feature: 'Authenticated client view — signup, doc checklist, upload, YoY analysis summary',
     route: '/portal',
     prototypeStatus: 'built',
     tables: ['clients', 'document_uploads', 'document_requirements'],
-    effortDays: 2,
-    productionNotes: 'Functional for demo. Production: link authenticated client Supabase auth user to their clients row via email match; RLS so clients only see own documents.'
+    effortDays: 1,
+    productionNotes: 'Phase 1 complete: signup, 2025 checklist, 2024 baseline comparison, email draft on analysis. Production: password reset, email verification.'
   },
   {
     id: 18, module: 'Admin Settings',

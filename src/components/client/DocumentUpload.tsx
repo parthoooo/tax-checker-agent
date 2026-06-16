@@ -2,21 +2,41 @@ import React, { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, FileText, X, Loader2, AlertTriangle, CheckCircle2, Copy, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
-import { createDocumentUpload, createAiFlag, logActivity } from '@/lib/db';
-import { uploadDocument } from '@/utils/uploadDocument';
+import {
+  createDocumentUpload,
+  createAiFlag,
+  createEmailDraft,
+  logActivity,
+} from '@/lib/db';
+import { uploadDocumentToStorage } from '@/utils/uploadDocument';
+import { analyzeDocument } from '@/utils/analyzeDocument';
+import { buildEmailDraftBody } from '@/lib/aiSimulation';
+import { CURRENT_TAX_YEAR, CURRENT_TAX_YEAR_NUM } from '@/lib/taxConfig';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DocumentUploadProps {
   documentId: string;
   documentName: string;
-  hint?: string;
+  docType: string;
   clientId: string;
+  clientEmail?: string;
+  clientName?: string;
+  existingFilenames: string[];
   onUpload: (documentId: string, file: File) => void;
+  onAnalysisComplete?: () => void;
 }
 
-const sessionUploaded = new Set<string>();
-
-const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentName, hint, clientId, onUpload }) => {
+const DocumentUpload: React.FC<DocumentUploadProps> = ({
+  documentId,
+  documentName,
+  docType,
+  clientId,
+  clientEmail,
+  clientName,
+  existingFilenames,
+  onUpload,
+  onAnalysisComplete,
+}) => {
   const { user, session } = useAuth();
   const [isDragOver, setIsDragOver]     = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -29,29 +49,41 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
     setOutcome(null);
     setIsAnalyzing(true);
 
-    const result = await uploadDocument(
-      file,
+    const analysis = await analyzeDocument({
+      fileName: file.name,
+      mimeType: file.type,
+      requirementDocType: docType,
       clientId,
-      documentName,
-      2024,
-      [...sessionUploaded],
-    );
+      existingFilenames,
+    });
 
     setIsAnalyzing(false);
-    setOutcome(result.aiStatus);
-    setMessage(result.aiMessage || result.error || '');
+    setOutcome(analysis.aiStatus);
+    setMessage(analysis.aiMessage || '');
 
-    if (result.aiStatus === 'verified' && result.success) {
-      sessionUploaded.add(file.name.toLowerCase());
+    const aiDbStatus = analysis.aiStatus === 'verified' ? 'verified' : 'flagged';
+    const storagePath = `clients/${clientId}/${CURRENT_TAX_YEAR}/${docType}/${file.name.replace(/\s+/g, '_')}`;
+
+    if (analysis.aiStatus === 'verified') {
+      const stored = await uploadDocumentToStorage(file, clientId, docType, CURRENT_TAX_YEAR_NUM);
+      if (!stored.success) {
+        toast.error('Upload failed', { description: stored.error });
+        setOutcome(null);
+        setSelectedFile(null);
+        return;
+      }
+
       try {
         await createDocumentUpload({
           client_id:      clientId,
-          requirement_id: documentId.startsWith('req-') ? documentId.replace('req-', '') : null,
+          requirement_id: documentId,
           file_name:      file.name,
-          storage_path:   result.storagePath ?? `clients/${clientId}/2024/${documentName}/${file.name}`,
+          storage_path:   stored.storagePath ?? storagePath,
           file_size:      file.size,
           mime_type:      file.type || null,
           ai_status:      'verified',
+          tax_year:       CURRENT_TAX_YEAR,
+          is_prior_year:  false,
           uploaded_by:    session?.user?.id ?? null,
         });
 
@@ -63,30 +95,71 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
         });
 
         onUpload(documentId, file);
+        onAnalysisComplete?.();
         toast.success('Document uploaded', { description: `${documentName} verified and filed.` });
       } catch (err: any) {
         toast.error('Upload failed', { description: err?.message ?? 'Please try again.' });
         setOutcome(null);
         setSelectedFile(null);
       }
-    } else if (result.aiStatus !== 'verified') {
-      const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
-        wrong_year: 'wrong-year',
-        duplicate:  'duplicate',
-        unexpected: 'unexpected',
-      };
-      const ft = flagTypeMap[result.aiStatus];
-      if (ft && clientId) {
-        createAiFlag({
+    } else {
+      try {
+        const upload = await createDocumentUpload({
+          client_id:      clientId,
+          requirement_id: documentId,
+          file_name:      file.name,
+          storage_path:   storagePath,
+          file_size:      file.size,
+          mime_type:      file.type || null,
+          ai_status:      aiDbStatus,
+          tax_year:       CURRENT_TAX_YEAR,
+          is_prior_year:  false,
+          uploaded_by:    session?.user?.id ?? null,
+        });
+
+        const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
+          wrong_year: 'wrong-year',
+          duplicate:  'duplicate',
+          unexpected: 'unexpected',
+        };
+        const ft = flagTypeMap[analysis.aiStatus] ?? 'unexpected';
+        await createAiFlag({
           client_id:   clientId,
-          upload_id:   null,
+          upload_id:   upload.id,
           flag_type:   ft,
           severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
-          description: result.aiMessage,
+          description: analysis.aiMessage,
           detected_by: 'Doc Classifier Agent',
-          resolved:    false,
-          resolved_at: null,
-        }).catch(() => {});
+        });
+
+        if (clientEmail && clientName) {
+          const draftResult = {
+            outcome: ft,
+            title: 'Issue Detected',
+            detail: analysis.aiMessage,
+            aiStatus: 'flagged' as const,
+            confidence: analysis.confidence,
+          };
+          const emailContent = buildEmailDraftBody(
+            clientName,
+            draftResult as any,
+            file.name,
+            'Your Tax Preparer',
+          );
+          await createEmailDraft({
+            client_id:  clientId,
+            to_email:   clientEmail,
+            from_label: 'Your Tax Preparer',
+            subject:    emailContent.subject,
+            body:       emailContent.body,
+            status:     'pending',
+            type:       'outbox',
+          });
+        }
+
+        onAnalysisComplete?.();
+      } catch {
+        // flags/drafts are best-effort
       }
     }
   };
@@ -98,7 +171,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
     setIsDragOver(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) handleFile(files[0]);
-  }, [clientId]);
+  }, [clientId, docType, existingFilenames]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -135,7 +208,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
             </Button>
             <p className="text-xs text-gray-500 mt-2">Supported: PDF, JPG, PNG, DOC, DOCX</p>
           </div>
-          {hint && <p className="text-xs italic text-gray-500 px-1">{hint}</p>}
         </>
       )}
 
@@ -155,7 +227,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
           {isAnalyzing && (
             <div className="flex items-center gap-2 p-3 rounded-md bg-blue-50 border border-blue-200">
               <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-              <span className="text-sm text-blue-800 font-medium">🤖 AI analyzing document…</span>
+              <span className="text-sm text-blue-800 font-medium">AI analyzing document…</span>
             </div>
           )}
 
@@ -164,7 +236,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-red-900 text-sm">⚠️ Wrong Tax Year Detected</p>
+                  <p className="font-semibold text-red-900 text-sm">Wrong Tax Year Detected</p>
                   <p className="text-sm text-red-800 mt-1">{message}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-red-300" onClick={reset}>Re-upload</Button>
                 </div>
@@ -177,7 +249,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
               <div className="flex items-start gap-2">
                 <Copy className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-orange-900 text-sm">🔁 Duplicate Detected</p>
+                  <p className="font-semibold text-orange-900 text-sm">Duplicate Detected</p>
                   <p className="text-sm text-orange-800 mt-1">{message}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-orange-300" onClick={reset}>Dismiss</Button>
                 </div>
@@ -190,7 +262,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
               <div className="flex items-start gap-2">
                 <FileWarning className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-yellow-900 text-sm">📂 Unexpected Document</p>
+                  <p className="font-semibold text-yellow-900 text-sm">Unexpected Document</p>
                   <p className="text-sm text-yellow-800 mt-1">{message}</p>
                   <Button size="sm" variant="outline" className="mt-2 border-yellow-400" onClick={reset}>Remove</Button>
                 </div>
@@ -203,7 +275,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ documentId, documentNam
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold text-green-900 text-sm">✅ Document Verified</p>
+                  <p className="font-semibold text-green-900 text-sm">Document Verified</p>
                   <p className="text-sm text-green-800 mt-1">{message}</p>
                 </div>
               </div>

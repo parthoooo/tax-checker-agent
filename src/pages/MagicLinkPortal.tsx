@@ -17,10 +17,14 @@ import {
   createEmailDraft,
   logActivity,
 } from '@/lib/db';
-import { buildFlagDescription, buildEmailDraftBody } from '@/lib/aiSimulation';
-import { uploadDocument } from '@/utils/uploadDocument';
+import { buildEmailDraftBody } from '@/lib/aiSimulation';
+import { uploadDocumentToStorage } from '@/utils/uploadDocument';
+import { analyzeDocument } from '@/utils/analyzeDocument';
+import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
+import AnalysisSummary from '@/components/client/AnalysisSummary';
+import type { ComparisonResult } from '@/lib/documentComparison';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR, CURRENT_TAX_YEAR_NUM } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
-
 type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
 type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
 
@@ -38,6 +42,24 @@ const MagicLinkPortal: React.FC = () => {
   const [tokenExpired, setTokenExpired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [requirements, setRequirements] = useState<ReqWithUpload[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  const refreshAnalysis = useCallback(async () => {
+    if (!client) return;
+    setAnalysisLoading(true);
+    try {
+      const result = await runDocumentAnalysis(
+        client.id,
+        client.name,
+        client.email,
+        client.assigned_preparer ?? 'Your Tax Preparer',
+      );
+      setAnalysisResult(result);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [client]);
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
@@ -75,10 +97,21 @@ const MagicLinkPortal: React.FC = () => {
       .filter(r => r.upload && r.id !== req.id)
       .map(r => r.upload!.file_name);
 
-    const result = await uploadDocument(file, client.id, req.doc_type, 2024, existingNames);
+    const analysis = await analyzeDocument({
+      fileName: file.name,
+      mimeType: file.type,
+      requirementDocType: req.doc_type,
+      clientId: client.id,
+      existingFilenames: existingNames,
+    });
 
-    const aiDbStatus = result.aiStatus === 'verified' ? 'verified' : 'flagged';
-    const storagePath = result.storagePath ?? `clients/${client.id}/2024/${req.doc_type}/${file.name}`;
+    const aiDbStatus = analysis.aiStatus === 'verified' ? 'verified' : 'flagged';
+    let storagePath = `clients/${client.id}/${CURRENT_TAX_YEAR}/${req.doc_type}/${file.name.replace(/\s+/g, '_')}`;
+
+    if (analysis.aiStatus === 'verified') {
+      const stored = await uploadDocumentToStorage(file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM);
+      if (stored.storagePath) storagePath = stored.storagePath;
+    }
 
     try {
       const upload = await createDocumentUpload({
@@ -89,43 +122,44 @@ const MagicLinkPortal: React.FC = () => {
         file_size: file.size,
         mime_type: file.type || 'application/octet-stream',
         ai_status: aiDbStatus,
+        tax_year: CURRENT_TAX_YEAR,
+        is_prior_year: false,
         uploaded_by: null,
       });
 
-      if (result.aiStatus !== 'verified') {
+      if (analysis.aiStatus !== 'verified') {
         const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
           wrong_year: 'wrong-year',
           duplicate:  'duplicate',
           unexpected: 'unexpected',
         };
-        const ft = flagTypeMap[result.aiStatus] ?? 'unexpected';
+        const ft = flagTypeMap[analysis.aiStatus] ?? 'unexpected';
         await createAiFlag({
           client_id:   client.id,
           upload_id:   upload.id,
           flag_type:   ft,
           severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
-          description: result.aiMessage,
+          description: analysis.aiMessage,
           detected_by: 'Doc Classifier Agent',
         });
 
-        // Build a compatible result shape for the email draft builder
         const draftResult = {
           outcome: ft === 'wrong-year' ? 'wrong-year' : ft === 'duplicate' ? 'duplicate' : 'unexpected',
           title: 'Issue Detected',
-          detail: result.aiMessage,
+          detail: analysis.aiMessage,
           aiStatus: 'flagged' as const,
-          confidence: 97,
+          confidence: analysis.confidence,
         };
         const emailContent = buildEmailDraftBody(
           client.name,
           draftResult as any,
           file.name,
-          client.assigned_preparer ?? 'sj@brodermansoor.com'
+          client.assigned_preparer ?? 'Your Tax Preparer'
         );
         await createEmailDraft({
           client_id:  client.id,
           to_email:   client.email,
-          from_label: client.assigned_preparer ?? 'sj@brodermansoor.com',
+          from_label: client.assigned_preparer ?? 'Your Tax Preparer',
           subject:    emailContent.subject,
           body:       emailContent.body,
           status:     'pending',
@@ -140,15 +174,17 @@ const MagicLinkPortal: React.FC = () => {
         action: `Uploaded ${file.name} via magic link portal`,
       });
 
+      await refreshAnalysis();
+
       const validationResult = {
-        outcome: result.aiStatus === 'verified' ? 'verified'
-               : result.aiStatus === 'wrong_year' ? 'wrong-year'
-               : result.aiStatus === 'duplicate'  ? 'duplicate'
+        outcome: analysis.aiStatus === 'verified' ? 'verified'
+               : analysis.aiStatus === 'wrong_year' ? 'wrong-year'
+               : analysis.aiStatus === 'duplicate'  ? 'duplicate'
                : 'unexpected',
-        title:     result.aiStatus === 'verified' ? 'Document Verified' : 'Issue Detected',
-        detail:    result.aiMessage || '',
+        title:     analysis.aiStatus === 'verified' ? 'Document Verified' : 'Issue Detected',
+        detail:    analysis.aiMessage || '',
         aiStatus:  aiDbStatus as any,
-        confidence: 97,
+        confidence: analysis.confidence,
       };
       setRequirements(prev => prev.map(r =>
         r.id === req.id
@@ -161,7 +197,7 @@ const MagicLinkPortal: React.FC = () => {
       ));
       toast.error('Upload failed. Please try again.');
     }
-  }, [client, requirements]);
+  }, [client, requirements, refreshAnalysis]);
 
   if (loading) {
     return (
@@ -213,7 +249,7 @@ const MagicLinkPortal: React.FC = () => {
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Hi {client.name.split(' ')[0]},</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Please upload your 2024 tax documents below. Each document is instantly verified by AI — you'll see the result immediately.
+            Please upload your {CURRENT_TAX_YEAR} tax documents below. Each document is instantly verified by AI and compared against your {PRIOR_TAX_YEAR} filings.
           </p>
         </div>
 
@@ -232,6 +268,8 @@ const MagicLinkPortal: React.FC = () => {
             )}
           </CardContent>
         </Card>
+
+        <AnalysisSummary result={analysisResult} loading={analysisLoading} />
 
         {/* Document list */}
         <div className="space-y-3">
