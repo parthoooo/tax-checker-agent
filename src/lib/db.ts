@@ -73,15 +73,19 @@ export async function submitDocumentsForReview(
   const now = new Date().toISOString();
   const taxYear = params.taxYear ?? CURRENT_TAX_YEAR;
 
+  const clientUpdates: Record<string, unknown> = {
+    last_activity: now,
+  };
+  if (taxYear === CURRENT_TAX_YEAR) {
+    clientUpdates.documents_submitted = params.uploadedCount;
+    clientUpdates.documents_required = params.requiredCount;
+    clientUpdates.status = 'complete';
+    clientUpdates.issues = 0;
+  }
+
   const { error: clientErr } = await supabase
     .from('clients')
-    .update({
-      documents_submitted: params.uploadedCount,
-      documents_required: params.requiredCount,
-      status: 'complete',
-      issues: 0,
-      last_activity: now,
-    })
+    .update(clientUpdates)
     .eq('id', clientId);
   if (clientErr) throw clientErr;
 
@@ -98,6 +102,21 @@ export async function submitDocumentsForReview(
     documentNames: params.documentNames,
     taxYear,
   });
+}
+
+/** Whether the client already submitted a given tax year's document package. */
+export async function hasClientSubmittedTaxYear(
+  clientId: string,
+  taxYear: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('activity_log')
+    .select('id')
+    .eq('client_id', clientId)
+    .like('action', `Submitted all ${taxYear} documents%`)
+    .limit(1);
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function notifyPreparerOfSubmission(

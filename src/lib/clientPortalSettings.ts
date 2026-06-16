@@ -169,6 +169,18 @@ export async function setPriorYearUploadEnabled(
   enabled: boolean,
 ): Promise<void> {
   await updateClientFields(clientId, { prior_year_upload_enabled: enabled });
+  if (!enabled) return;
+
+  const client = await fetchClientById(clientId);
+  if (!client) return;
+
+  const existing = await fetchDocumentRequirements(clientId, PRIOR_TAX_YEAR);
+  if (existing.length > 0) return;
+
+  const businessType = (client.business_type ?? 'freelancer') as BusinessType;
+  await syncChecklistToProfession(clientId, PRIOR_TAX_YEAR, businessType, {
+    lockProfession: false,
+  });
 }
 
 export async function unlockClientProfession(clientId: string): Promise<void> {

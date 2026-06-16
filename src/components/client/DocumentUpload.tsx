@@ -97,8 +97,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         file_size:      file.size,
         mime_type:      file.type || null,
         ai_status:      'verified' as const,
-        tax_year:       taxYear,
-        is_prior_year:  false,
+          tax_year:       taxYear,
+          is_prior_year:  taxYear !== CURRENT_TAX_YEAR,
         uploaded_by:    session?.user?.id ?? null,
       };
 
@@ -144,8 +144,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           file_size:      file.size,
           mime_type:      file.type || null,
           ai_status:      aiDbStatus as 'verified' | 'flagged',
-          tax_year:       CURRENT_TAX_YEAR,
-          is_prior_year:  false,
+          tax_year:       taxYear,
+          is_prior_year:  taxYear !== CURRENT_TAX_YEAR,
           uploaded_by:    session?.user?.id ?? null,
         };
 
