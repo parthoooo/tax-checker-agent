@@ -4,7 +4,8 @@ Living document of all features currently shipped in this app. Update this file 
 
 ## Authentication & Roles
 - Real Supabase email/password auth via `AuthContext` + `onAuthStateChange`
-- **Client self-signup** — Create Account tab on login page; auto-creates `clients` row, 2025 checklist, and 2024 prior-year baseline
+- **Client self-signup** — Create Account tab on login page; **Continue with Google** on the same screen. New users enter an **admin approval queue** before portal access.
+- **Sign-up Approvals** (admin) — `/clients/signups` lists pending Google/email registrations; admin assigns role: **Client** (portal + checklist), **Preparer**, or **Admin**.
 - Google OAuth sign-in (via Lovable auth integration)
 - Three roles: `admin`, `preparer`, `client` (derived from `user_metadata.role`)
 - Quick demo logins on the login screen (password `BMM-Demo-2026!`, seeded via `seed-demo-users` edge function):
@@ -182,6 +183,8 @@ Every PR/change that adds or materially changes a user-facing feature must updat
 | John Smith (demo) | `john.smith@email.com` | `BMM-Demo-2026!` | client |
 
 Run `seed-demo-users` edge function once to create/reset these accounts and seed 2024 baseline + 2025 checklist.
+
+**Create Account** (email sign-up) requires a strong password (12+ chars, mixed case, number, symbol). Supabase rejects common passwords like `password123`. Example: `MyTax-Firm-2026!`
 
 ### Demo filenames to trigger AI flags
 | Filename | Expected result |

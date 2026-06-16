@@ -92,6 +92,9 @@ const Clients: React.FC = () => {
         subtitle={`${clients.length} clients this tax season`}
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/clients/signups">Sign-up Approvals</Link>
+            </Button>
             <Button
               variant="outline"
               onClick={handleSeedDemo}

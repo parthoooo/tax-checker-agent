@@ -121,6 +121,20 @@ interface TimeEntryRow {
   created_at: string;
 }
 
+interface SignupRequestRow {
+  id: string;
+  auth_user_id: string;
+  email: string;
+  full_name: string;
+  provider: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_role: 'client' | 'preparer' | 'admin' | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejected_reason: string | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -194,6 +208,20 @@ export interface Database {
         Row: TimeEntryRow;
         Insert: Omit<TimeEntryRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<TimeEntryRow>;
+        Relationships: [];
+      };
+      signup_requests: {
+        Row: SignupRequestRow;
+        Insert: Omit<SignupRequestRow, 'id' | 'created_at' | 'status' | 'approved_role' | 'approved_by' | 'approved_at' | 'rejected_reason'> & {
+          id?: string;
+          created_at?: string;
+          status?: SignupRequestRow['status'];
+          approved_role?: SignupRequestRow['approved_role'];
+          approved_by?: string | null;
+          approved_at?: string | null;
+          rejected_reason?: string | null;
+        };
+        Update: Partial<SignupRequestRow>;
         Relationships: [];
       };
     };
