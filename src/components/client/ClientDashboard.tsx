@@ -158,7 +158,8 @@ const ClientDashboard: React.FC = () => {
     y => clientRecord && clientCanSelectTaxYear(clientRecord, y),
   );
 
-  const needsProfessionSetup = clientRecord && !clientRecord.profession_locked;
+  const hasChecklist = docs.some(d => d.required);
+  const needsProfessionSetup = clientRecord && !clientRecord.profession_locked && !hasChecklist;
 
   const handleSubmitForReview = async () => {
     if (!clientId || !allSlotsFilled || submitting || alreadySubmitted) return;
@@ -485,7 +486,7 @@ const ClientDashboard: React.FC = () => {
                     </p>
                     <Button
                       size="lg"
-                      disabled={!allSlotsFilled || submitting || yearLocked}
+                      disabled={!allSlotsFilled || submitting}
                       className="bg-green-600 hover:bg-green-700"
                       onClick={handleSubmitForReview}
                     >

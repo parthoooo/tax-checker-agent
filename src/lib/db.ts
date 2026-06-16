@@ -146,7 +146,6 @@ export async function updateClientBusinessType(
   businessType: BusinessType,
   taxYear = CURRENT_TAX_YEAR,
 ): Promise<Client> {
-  const { syncChecklistToProfession } = await import('./clientPortalSettings');
   await syncChecklistToProfession(clientId, taxYear, businessType, { lockProfession: true });
   const { data, error } = await supabase
     .from('clients')
