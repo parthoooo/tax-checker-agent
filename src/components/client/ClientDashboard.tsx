@@ -30,6 +30,7 @@ import {
 } from '@/lib/db';
 import {
   clientCanSelectTaxYear,
+  checklistMatchesProfession,
   isTaxYearUploadLocked,
   setClientProfessionFromPortal,
   syncChecklistToProfession,
@@ -100,7 +101,11 @@ const ClientDashboard: React.FC = () => {
       let reqs = await fetchDocumentRequirements(client.id, taxYear);
       if (isStale()) return;
 
-      if (taxYear === PRIOR_TAX_YEAR && client.prior_year_upload_enabled) {
+      if (
+        taxYear === PRIOR_TAX_YEAR
+        && client.prior_year_upload_enabled
+        && !checklistMatchesProfession(reqs, businessType)
+      ) {
         reqs = await syncChecklistToProfession(client.id, taxYear, businessType, {
           lockProfession: false,
         });
@@ -243,12 +248,8 @@ const ClientDashboard: React.FC = () => {
   };
 
   const handleTaxYearChange = (year: string) => {
+    if (year === selectedTaxYear) return;
     loadRequestRef.current += 1;
-    setDocs([]);
-    setYearSubmitted(false);
-    setYearLocked(false);
-    setYearLockReason(undefined);
-    setLoading(true);
     setSelectedTaxYear(year);
   };
 
@@ -304,7 +305,7 @@ const ClientDashboard: React.FC = () => {
             <p className="text-sm text-muted-foreground">
               Your account was approved but your document checklist is still loading. Click below or contact your preparer.
             </p>
-            <Button variant="default" onClick={() => refreshUser().then(() => loadData())}>
+            <Button variant="default" onClick={() => refreshUser().then(() => loadData(selectedTaxYear))}>
               Refresh
             </Button>
             <Button variant="outline" onClick={logout}>Sign Out</Button>
@@ -423,6 +424,11 @@ const ClientDashboard: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              </div>
+            ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-sm font-medium">
@@ -435,6 +441,7 @@ const ClientDashboard: React.FC = () => {
               </div>
               <Progress value={progress} className="h-2" />
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -507,7 +514,7 @@ const ClientDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {missingDocs.length > 0 && !yearLocked && (
+        {missingDocs.length > 0 && !yearLocked && !loading && (
           <Card className="mb-8 border-yellow-300 bg-yellow-50">
             <CardContent className="pt-6">
               <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -523,7 +530,7 @@ const ClientDashboard: React.FC = () => {
           </Card>
         )}
 
-        {totalCount > 0 && (
+        {totalCount > 0 && !loading && (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center space-y-4">

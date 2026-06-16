@@ -191,6 +191,7 @@ const ClientDetail: React.FC = () => {
     if (!client) return;
     try {
       await resolveClientCorrection(client.id);
+      await reloadClientData();
       toast.success('Correction cleared from client portal');
     } catch (err: any) {
       toast.error('Failed to clear correction', { description: err?.message });
@@ -449,7 +450,7 @@ const ClientDetail: React.FC = () => {
                   <Send className="w-4 h-4 mr-1" /> Send correction to client
                 </Button>
                 <Button variant="ghost" size="sm" onClick={handleClearCorrection}>
-                  Clear client checklist
+                  Clear correction from portal
                 </Button>
               </CardContent>
             </Card>

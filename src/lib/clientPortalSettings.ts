@@ -17,6 +17,19 @@ const supabase: any = typedSupabase;
 type Client = Database['public']['Tables']['clients']['Row'];
 type DocReq = Database['public']['Tables']['document_requirements']['Row'];
 
+/** True when required checklist rows match the profession template (ignores extra rows with uploads). */
+export function checklistMatchesProfession(
+  reqs: DocReq[],
+  businessType: BusinessType,
+): boolean {
+  const template = getRequirementsForBusinessType(businessType);
+  const requiredTypes = new Set(
+    reqs.filter(r => r.required).map(r => r.doc_type),
+  );
+  if (requiredTypes.size !== template.length) return false;
+  return template.every(t => requiredTypes.has(t.doc_type));
+}
+
 export const PORTAL_TAX_YEARS = [CURRENT_TAX_YEAR, PRIOR_TAX_YEAR] as const;
 export type PortalTaxYear = typeof PORTAL_TAX_YEARS[number];
 
