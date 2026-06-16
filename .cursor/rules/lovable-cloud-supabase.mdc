@@ -1,0 +1,33 @@
+---
+description: Lovable Cloud Supabase constraints — no manual Supabase CLI/dashboard access
+alwaysApply: true
+---
+
+# Lovable Cloud Supabase
+
+This is a **Lovable project**. Supabase is provisioned and managed by **Lovable Cloud**, not a standalone Supabase account the team logs into.
+
+## Never ask the user to
+
+- Run `supabase` CLI commands (`db push`, `migration up`, `functions deploy`, `seed`, etc.)
+- Log into the Supabase dashboard to run SQL, seeds, or RLS changes
+- Manually apply migrations or invoke edge functions from Supabase UI
+- Obtain or configure service-role keys for local use
+
+## How backend changes get applied
+
+1. **Sync code to Lovable** — push to GitHub (Lovable pulls) or edit/prompt in the [Lovable project](https://lovable.dev/projects/7e586b0b-76b3-4989-b48d-ba4a31a775f9)
+2. **Ask Lovable to apply schema/functions** — e.g. "Apply migrations in `supabase/migrations/` and deploy edge functions"
+3. **Use in-app actions when available** — e.g. Admin **Load Demo Data** (`seedAllDemoData` via anon client), not CLI seed
+
+## Local development
+
+- `npm run dev` → `http://localhost:8080`
+- Localhost uses **remote Lovable Cloud Supabase** via `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`)
+- No local Supabase instance; `.env` must match the Lovable project (copy from Lovable project settings if missing)
+- Edge functions and migrations only exist remotely **after** Lovable sync — client code falls back to local mock AI when `analyze-document` is not deployed
+
+## When planning work
+
+- Prefer client-side fallbacks for demos until Lovable has deployed schema/functions
+- Document "sync to Lovable first" steps instead of Supabase CLI runbooks

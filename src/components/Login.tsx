@@ -5,20 +5,31 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 
+type AuthMode = 'signin' | 'signup';
+
 const Login: React.FC = () => {
+  const [mode, setMode] = useState<AuthMode>('signin');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, loginWithGoogle, quickLogin } = useAuth();
+  const { login, signUp, loginWithGoogle, quickLogin } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await login(email, password);
-      toast.success('Welcome back!');
+      if (mode === 'signup') {
+        await signUp(email, password, fullName);
+        toast.success('Account created!', { description: 'You can now upload your tax documents.' });
+      } else {
+        await login(email, password);
+        toast.success('Welcome back!');
+      }
     } catch (error: any) {
-      toast.error('Login failed', { description: error?.message ?? 'Check your credentials.' });
+      toast.error(mode === 'signup' ? 'Sign up failed' : 'Login failed', {
+        description: error?.message ?? 'Please try again.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -52,11 +63,41 @@ const Login: React.FC = () => {
           <p className="text-muted-foreground text-sm">AI-Powered Tax Document Management</p>
         </CardHeader>
         <CardContent>
+          <div className="flex rounded-lg border mb-4 p-1">
+            <button
+              type="button"
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                mode === 'signin' ? 'bg-blue-900 text-white' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setMode('signin')}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                mode === 'signup' ? 'bg-blue-900 text-white' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setMode('signup')}
+            >
+              Create Account
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'signup' && (
+              <Input
+                type="text"
+                placeholder="Full name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+              />
+            )}
             <Input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in…' : 'Sign In'}
+              {isLoading ? 'Please wait…' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
           </form>
 
@@ -84,32 +125,23 @@ const Login: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 border-2 border-blue-700 text-blue-800 hover:bg-blue-50 font-semibold text-xs"
-              onClick={() => handleQuickLogin('admin')}
-              disabled={isLoading}
-            >
+            <Button type="button" variant="outline" className="h-12 border-2 border-blue-700 text-blue-800 hover:bg-blue-50 font-semibold text-xs" onClick={() => handleQuickLogin('admin')} disabled={isLoading}>
               Nick (Admin)
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs"
-              onClick={() => handleQuickLogin('preparer-shawn')}
-              disabled={isLoading}
-            >
+            <Button type="button" variant="outline" className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs" onClick={() => handleQuickLogin('preparer-shawn')} disabled={isLoading}>
               Sean (Preparer)
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs"
-              onClick={() => handleQuickLogin('preparer-girik')}
-              disabled={isLoading}
-            >
+            <Button type="button" variant="outline" className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs" onClick={() => handleQuickLogin('preparer-girik')} disabled={isLoading}>
               Girik (Preparer)
+            </Button>
+            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client')} disabled={isLoading}>
+              John (Client)
+            </Button>
+            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client-sean')} disabled={isLoading}>
+              Sean (Test Client)
+            </Button>
+            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client-girik')} disabled={isLoading}>
+              Girik (Test Client)
             </Button>
           </div>
 

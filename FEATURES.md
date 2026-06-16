@@ -4,29 +4,34 @@ Living document of all features currently shipped in this app. Update this file 
 
 ## Authentication & Roles
 - Real Supabase email/password auth via `AuthContext` + `onAuthStateChange`
+- **Client self-signup** — Create Account tab on login page; auto-creates `clients` row, 2025 checklist, and 2024 prior-year baseline
 - Google OAuth sign-in (via Lovable auth integration)
 - Three roles: `admin`, `preparer`, `client` (derived from `user_metadata.role`)
-- Four quick demo logins on the login screen:
+- Quick demo logins on the login screen (password `password123`, seeded via `seed-demo-users` edge function):
   - Nick Broder — admin (`nick@brodermansoor.com`)
   - Shawn Mansoor — preparer (`shawn@brodermansoor.com`)
   - Girik Patel — preparer (`girik@brodermansoor.com`)
   - John Smith — client (`john.smith@email.com`)
-  - All seeded with password `password123` via the `seed-demo-users` edge function
+  - Sean Test Client — client (`sean.test@brodermansoor.com`)
+  - Girik Test Client — client (`girik.test@brodermansoor.com`)
 - `ProtectedRoute` enforces role-based access: admins/preparers fall back to `/dashboard`, clients fall back to `/portal`
 - Logout via Supabase `signOut`
 
 ## Client Dashboard (`/portal`)
 - Loads the logged-in client via `clients.auth_user_id`
-- Document checklist driven by `document_requirements` (W-2, 1099-NEC, etc.) with progress tracking
-- Drag-and-drop document upload writing to Supabase Storage (`documents` bucket) + `document_uploads`
-- Simulated AI analysis with three outcomes (Wrong Year, Duplicate, Verified) writing `ai_status`
+- **Tax year 2025** checklist from `document_requirements` (W-2, 1099-NEC, 1098, Schedule C, etc.) with progress tracking
+- Drag-and-drop document upload writing to Supabase Storage (`documents` bucket) + `document_uploads` (with `tax_year`, `is_prior_year`)
+- AI analysis via `analyze-document` edge function (mock filename classifier; Claude fallback when `ANTHROPIC_API_KEY` set)
+- **Analysis Summary** card — compares 2025 uploads vs 2024 prior-year baseline (missing, wrong year, wrong type, verified)
+- **Run AI Analysis** button triggers full comparison + follow-up email draft to Outbox
+- Failed validations create `ai_flags`, draft emails into `email_drafts`, and append to `activity_log`
 - "Still Missing" alert with self-reminder trigger (logged to `reminders` + `activity_log`)
 - Sonner toast feedback
 
 ## Magic Link Upload Portal (`/upload/:token`)
-- Public, tokenized upload page for clients without a login
+- Public, tokenized upload page — **equal priority** with authenticated `/portal`
 - Resolves client by upload token; shows an expired-token state when invalid
-- Same checklist + drag-and-drop upload + AI validation pipeline as the client dashboard
+- Same 2025 checklist + upload + AI validation + Analysis Summary as the client dashboard
 - Failed validations create `ai_flags`, draft a client email into `email_drafts`, and append to `activity_log`
 
 ## Admin Dashboard (`/dashboard`, admin + preparer)
@@ -104,11 +109,11 @@ Living document of all features currently shipped in this app. Update this file 
 - Supabase Storage bucket: `documents` (private)
 - `is_admin()` security-definer function used by RLS policies
 - RLS posture: admin full access, clients read/insert their own rows; demo-grade `authenticated` read policies in place on several tables (to be tightened before production)
-- Edge function `seed-demo-users` — one-shot seeding of the 4 demo auth users and linking John's client row to his auth user
+- Edge functions: `seed-demo-users` (demo auth + client seeding), `analyze-document` (mock AI + optional Claude fallback)
 
 ## Demo Data Seeding
 - **Load Demo Data** button on `/dashboard` AND `/clients` runs `seedAllDemoData` which ensures **20 demo clients** exist (6 hand-crafted scenarios + 14 procedurally generated) and fully populates the app for each
-- Per client the seeder produces: 5–7 document uploads (verified / flagged / rejected mix), 2–4 AI flags across all four flag types with some pre-resolved (so the Flags page Resolved tab is populated), 3–5 email drafts (mix of pending and historical sent so Email Queue → Sent is populated), 15–22 activity_log entries across the four named AI agents + staff + client actors, multi-session `time_entries` (3–4 sessions per client) and 1–2 historical `reminders`
+- Per client the seeder produces: **2024 prior-year baseline uploads** (all verified) + **2025 requirements and current uploads** (verified / flagged / rejected mix), 2–4 AI flags across all four flag types with some pre-resolved (so the Flags page Resolved tab is populated), 3–5 email drafts (mix of pending and historical sent so Email Queue → Sent is populated), 15–22 activity_log entries across the four named AI agents + staff + client actors, multi-session `time_entries` (3–4 sessions per client) and 1–2 historical `reminders`
 - Per-client `documents_submitted` / `issues` / `last_activity` are recomputed from the seeded data so dashboard counters stay accurate
 - Seeder is idempotent — missing extra clients are inserted, and per-client data is cleared and re-seeded on each run
 - **Seed Demo Emails** button on `/email-queue` adds 2 pending + 1 sent AI-drafted email per active client (populates both Pending and Sent tabs)
@@ -165,4 +170,30 @@ Every PR/change that adds or materially changes a user-facing feature must updat
 - Public `/upload/:token` route — no login required; clients open the link and upload requested documents directly.
 - Admins generate, copy, and email links from **Client Detail → Magic Links** tab; per-document Copy Link / Send via Email actions and a "Send All Pending" shortcut.
 - Link activity (generate / email) is recorded in the activity log; per-session "Link sent" indicators surface status before uploads arrive.
-- Client-account login is deprecated in favor of magic links (the `/portal` route is retained but no longer surfaced from the login screen).
+- **Dual client access:** authenticated `/portal` (signup/login) and magic links are both supported equally.
+
+## Phase 1 Handoff — Sean & Girik Testing
+
+### Test client accounts (login at `/` → quick demo or Create Account)
+| Account | Email | Password | Role |
+|---------|-------|----------|------|
+| Sean Test Client | `sean.test@brodermansoor.com` | `password123` | client |
+| Girik Test Client | `girik.test@brodermansoor.com` | `password123` | client |
+| John Smith (demo) | `john.smith@email.com` | `password123` | client |
+
+Run `seed-demo-users` edge function once to create/reset these accounts and seed 2024 baseline + 2025 checklist.
+
+### Demo filenames to trigger AI flags
+| Filename | Expected result |
+|----------|-----------------|
+| `W2_2024_JohnSmith.pdf` | Wrong year (2024 detected, 2025 required) |
+| `BankStatement_Jan2025.pdf` | Unexpected document |
+| Same filename uploaded twice | Duplicate |
+| `W2_2025_Employer.pdf` in W-2 slot | Verified |
+| `1099-NEC_2025.pdf` in W-2 slot | Wrong document type |
+
+### End-to-end flow
+1. Sign in as test client → `/portal`
+2. Upload documents (or use magic link from Client Detail → Magic Links)
+3. Click **Run AI Analysis** — see Analysis Summary + pending draft in `/email-queue`
+4. Staff reviews flags at `/flags` and approves email in Outbox

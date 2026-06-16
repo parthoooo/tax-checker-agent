@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, AlertCircle, Upload, LogOut, Mail, Loader2 } from 'lucide-react';
 import DocumentUpload from './DocumentUpload';
+import AnalysisSummary from './AnalysisSummary';
 import { toast } from 'sonner';
 import {
   fetchClientByAuthUser,
@@ -14,6 +15,9 @@ import {
   saveReminder,
   logActivity,
 } from '@/lib/db';
+import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
+import type { ComparisonResult } from '@/lib/documentComparison';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
 
 type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
@@ -28,46 +32,63 @@ const ClientDashboard: React.FC = () => {
 
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientEmail, setClientEmail] = useState<string>('');
+  const [clientName, setClientName] = useState<string>('');
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!session?.user?.id) return;
 
-    (async () => {
-      try {
-        const client = await fetchClientByAuthUser(session.user.id);
-        if (!client) { setLoading(false); return; }
+    const client = await fetchClientByAuthUser(session.user.id);
+    if (!client) {
+      setLoading(false);
+      return;
+    }
 
-        setClientId(client.id);
-        setClientEmail(client.email);
+    setClientId(client.id);
+    setClientEmail(client.email);
+    setClientName(client.name);
 
-        const [reqs, uploads] = await Promise.all([
-          fetchDocumentRequirements(client.id),
-          fetchDocumentUploads(client.id),
-        ]);
+    const [reqs, uploads] = await Promise.all([
+      fetchDocumentRequirements(client.id, CURRENT_TAX_YEAR),
+      fetchDocumentUploads(client.id, CURRENT_TAX_YEAR),
+    ]);
 
-        const uploadsByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
-        setDocs(reqs.map(r => ({ ...r, upload: uploadsByReqId.get(r.id) })));
-      } finally {
-        setLoading(false);
-      }
-    })();
+    const uploadsByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
+    setDocs(reqs.map(r => ({ ...r, upload: uploadsByReqId.get(r.id) })));
+    setLoading(false);
   }, [session?.user?.id]);
 
-  const handleUpload = (reqId: string, file: File) => {
-    setDocs(prev => prev.map(d =>
-      d.id === reqId
-        ? { ...d, upload: { id: '', client_id: clientId!, requirement_id: d.id, file_name: file.name, storage_path: '', file_size: file.size, mime_type: file.type, ai_status: 'verified', uploaded_by: session?.user?.id ?? null, uploaded_at: new Date().toISOString() } }
-        : d
-    ));
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const refreshAnalysis = useCallback(async () => {
+    if (!clientId || !clientName || !clientEmail) return;
+    setAnalysisLoading(true);
+    try {
+      const result = await runDocumentAnalysis(clientId, clientName, clientEmail);
+      setAnalysisResult(result);
+      await loadData();
+    } catch (err: any) {
+      toast.error('Analysis failed', { description: err?.message });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [clientId, clientName, clientEmail, loadData]);
+
+  const handleUpload = async (_reqId: string, _file: File) => {
+    await refreshAnalysis();
   };
 
   const submittedCount = docs.filter(d => d.upload?.ai_status === 'verified').length;
   const totalCount     = docs.filter(d => d.required).length;
   const progress       = totalCount > 0 ? (submittedCount / totalCount) * 100 : 0;
   const allDone        = totalCount > 0 && submittedCount === totalCount;
-  const missingDocs    = docs.filter(d => d.required && !d.upload).map(d => `${d.tax_year} ${d.name}`);
+  const missingDocs    = docs.filter(d => d.required && (!d.upload || d.upload.ai_status !== 'verified')).map(d => `${d.tax_year} ${d.name}`);
+  const existingFilenames = docs.filter(d => d.upload).map(d => d.upload!.file_name);
 
   const sendSelfReminder = async () => {
     if (!clientId) return;
@@ -92,15 +113,22 @@ const ClientDashboard: React.FC = () => {
     );
   }
 
-  // Fallback: if no client row is linked yet, show hardcoded demo documents
-  const displayDocs: DocRow[] = docs.length > 0 ? docs : [
-    { id: '1', client_id: '', name: 'W-2', doc_type: 'w2', tax_year: '2024', required: true, created_at: '', upload: undefined },
-    { id: '2', client_id: '', name: '1099-NEC', doc_type: '1099', tax_year: '2024', required: true, created_at: '', upload: { id: 'd', client_id: '', requirement_id: '2', file_name: '1099-NEC-2024.pdf', storage_path: '', file_size: null, mime_type: null, ai_status: 'verified', uploaded_by: null, uploaded_at: new Date().toISOString() } },
-    { id: '3', client_id: '', name: '1098 Mortgage Interest', doc_type: '1098', tax_year: '2024', required: true, created_at: '', upload: undefined },
-    { id: '4', client_id: '', name: 'Schedule C', doc_type: 'sched-c', tax_year: '2024', required: true, created_at: '', upload: undefined },
-  ];
-
-  const effectiveClientId = clientId ?? 'demo-client';
+  if (!clientId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Card className="max-w-md w-full text-center">
+          <CardContent className="pt-8 pb-8 space-y-4">
+            <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
+            <h2 className="text-lg font-semibold">Account setup in progress</h2>
+            <p className="text-sm text-muted-foreground">
+              Your client profile is being linked. Please sign out and sign back in, or contact your preparer if this persists.
+            </p>
+            <Button variant="outline" onClick={logout}>Sign Out</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -135,15 +163,23 @@ const ClientDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
+        <div className="flex justify-end mb-4">
+          <Button variant="outline" onClick={refreshAnalysis} disabled={analysisLoading}>
+            {analysisLoading ? 'Analyzing…' : 'Run AI Analysis'}
+          </Button>
+        </div>
+
+        <AnalysisSummary result={analysisResult} loading={analysisLoading} />
+
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle>Required Documents — Tax Year 2024</CardTitle>
-            <p className="text-sm text-muted-foreground">Upload your required documents below. Our AI verifies each file in real time.</p>
+            <CardTitle>Required Documents — Tax Year {CURRENT_TAX_YEAR}</CardTitle>
+            <p className="text-sm text-muted-foreground">Upload your required documents below. Our AI verifies each file and compares against your {PRIOR_TAX_YEAR} filings.</p>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
-              {displayDocs.filter(d => d.required).map((doc) => {
-                const submitted = !!doc.upload;
+              {docs.filter(d => d.required).map((doc) => {
+                const submitted = doc.upload?.ai_status === 'verified';
                 return (
                   <div key={doc.id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -151,23 +187,28 @@ const ClientDashboard: React.FC = () => {
                         {submitted ? <CheckCircle className="w-5 h-5 text-green-500" /> : <AlertCircle className="w-5 h-5 text-amber-500" />}
                         <div>
                           <h3 className="font-medium">{doc.name} ({doc.tax_year})</h3>
-                          {submitted && doc.upload && (
+                          {doc.upload && (
                             <p className="text-sm text-muted-foreground">
                               Uploaded: {doc.upload.file_name} on {new Date(doc.upload.uploaded_at).toLocaleDateString()}
                             </p>
                           )}
                         </div>
                       </div>
-                      <Badge variant={submitted ? 'default' : 'secondary'}>
-                        {submitted ? 'Submitted' : 'Pending'}
+                      <Badge variant={submitted ? 'default' : doc.upload ? 'destructive' : 'secondary'}>
+                        {submitted ? 'Verified' : doc.upload ? 'Issue' : 'Pending'}
                       </Badge>
                     </div>
                     {!submitted && (
                       <DocumentUpload
                         documentId={doc.id}
                         documentName={doc.name}
-                        clientId={effectiveClientId}
+                        docType={doc.doc_type}
+                        clientId={clientId}
+                        clientEmail={clientEmail}
+                        clientName={clientName}
+                        existingFilenames={existingFilenames}
                         onUpload={handleUpload}
+                        onAnalysisComplete={refreshAnalysis}
                       />
                     )}
                   </div>
@@ -182,13 +223,23 @@ const ClientDashboard: React.FC = () => {
             <CardContent className="pt-6">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                  <p className="font-semibold text-yellow-900">📋 Still Missing</p>
+                  <p className="font-semibold text-yellow-900">Still Missing</p>
                   <p className="text-sm text-yellow-800 mt-1">{missingDocs.join(', ')}</p>
                 </div>
                 <Button variant="outline" className="border-yellow-400" onClick={sendSelfReminder}>
-                  <Mail className="w-4 h-4 mr-2" />📧 Email Reminder to Myself
+                  <Mail className="w-4 h-4 mr-2" />Email Reminder to Myself
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {analysisResult && (analysisResult.missing.length > 0 || analysisResult.wrongYear.length > 0) && (
+          <Card className="mb-8 border-blue-200 bg-blue-50">
+            <CardContent className="pt-6">
+              <p className="text-sm text-blue-900">
+                A follow-up email has been drafted for your preparer to review. They will contact you if anything else is needed.
+              </p>
             </CardContent>
           </Card>
         )}
@@ -197,7 +248,7 @@ const ClientDashboard: React.FC = () => {
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
               <h3 className="text-lg font-medium">Ready to Submit?</h3>
-              <p className="text-muted-foreground">Once all documents are uploaded, submit them for review by our team.</p>
+              <p className="text-muted-foreground">Once all documents are uploaded and verified, submit them for review by our team.</p>
               <Button size="lg" disabled={!allDone} className="bg-green-600 hover:bg-green-700">
                 <Upload className="w-4 h-4 mr-2" />Submit for Review
               </Button>

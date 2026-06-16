@@ -1,5 +1,6 @@
 // Ensure bucket "documents" exists in Supabase dashboard with public=false
 import { supabase } from '@/lib/supabase';
+import { CURRENT_TAX_YEAR_NUM } from '@/lib/taxConfig';
 
 export interface UploadResult {
   success: boolean;
@@ -9,26 +10,43 @@ export interface UploadResult {
   aiMessage: string;
 }
 
+export async function uploadDocumentToStorage(
+  file: File,
+  clientId: string,
+  docType: string,
+  taxYear: number = CURRENT_TAX_YEAR_NUM,
+): Promise<{ success: boolean; storagePath?: string; error?: string }> {
+  const safeName = file.name.replace(/\s+/g, '_');
+  const path = `clients/${clientId}/${taxYear}/${docType}/${safeName}`;
+
+  const { error } = await (supabase as any).storage
+    .from('documents')
+    .upload(path, file, { upsert: false });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, storagePath: path };
+}
+
+/** @deprecated Use analyzeDocument + uploadDocumentToStorage */
 export async function uploadDocument(
   file: File,
   clientId: string,
   docType: string,
-  taxYear: number,
+  taxYear: number = CURRENT_TAX_YEAR_NUM,
   existingFilenames: string[],
 ): Promise<UploadResult> {
   const fn = file.name.toLowerCase();
 
-  // AI validation before uploading
   const yearMatches = fn.match(/20\d{2}/g);
-  if (yearMatches) {
-    const hasOldYear = yearMatches.some(y => parseInt(y) < taxYear);
-    if (hasOldYear) {
-      return {
-        success: false,
-        aiStatus: 'wrong_year',
-        aiMessage: `This document appears to be from a prior tax year. Tax year ${taxYear} is required — please re-upload the correct version.`,
-      };
-    }
+  if (yearMatches?.some(y => parseInt(y) < taxYear)) {
+    return {
+      success: false,
+      aiStatus: 'wrong_year',
+      aiMessage: `This document appears to be from a prior tax year. Tax year ${taxYear} is required — please re-upload the correct version.`,
+    };
   }
 
   if (existingFilenames.some(n => n.toLowerCase() === fn)) {
@@ -47,18 +65,11 @@ export async function uploadDocument(
     };
   }
 
-  // Upload to Supabase Storage with structured path
-  const safeName = file.name.replace(/\s+/g, '_');
-  const path = `clients/${clientId}/${taxYear}/${docType}/${safeName}`;
-
-  const { error } = await (supabase as any).storage
-    .from('documents')
-    .upload(path, file, { upsert: false });
-
-  if (error) {
+  const stored = await uploadDocumentToStorage(file, clientId, docType, taxYear);
+  if (!stored.success) {
     return {
       success: false,
-      error: error.message,
+      error: stored.error,
       aiStatus: 'verified',
       aiMessage: '',
     };
@@ -66,7 +77,7 @@ export async function uploadDocument(
 
   return {
     success: true,
-    storagePath: path,
+    storagePath: stored.storagePath,
     aiStatus: 'verified',
     aiMessage: 'Document verified and stored.',
   };

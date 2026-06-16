@@ -36,6 +36,8 @@ interface DocumentUploadRow {
   file_size: number | null;
   mime_type: string | null;
   ai_status: 'pending' | 'verified' | 'flagged' | 'rejected';
+  tax_year: string;
+  is_prior_year: boolean;
   uploaded_by: string | null;
   uploaded_at: string;
 }

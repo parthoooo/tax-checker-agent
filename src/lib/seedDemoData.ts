@@ -8,10 +8,9 @@
 
 import { supabase as typedSupabase } from './supabase';
 import { generateEmailDraft } from './aiSimulation';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from './taxConfig';
 
 const supabase: any = typedSupabase;
-
-const TAX_YEAR = '2024';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -720,6 +719,7 @@ async function seedOneClient(
     // 1. Clear existing seeded data
     await Promise.all([
       supabase.from('document_uploads').delete().eq('client_id', client.id),
+      supabase.from('document_requirements').delete().eq('client_id', client.id),
       supabase.from('ai_flags').delete().eq('client_id', client.id),
       supabase.from('email_drafts').delete().eq('client_id', client.id),
       supabase.from('activity_log').delete().eq('client_id', client.id),
@@ -727,30 +727,53 @@ async function seedOneClient(
       supabase.from('reminders').delete().eq('client_id', client.id),
     ]);
 
-    // 2. Ensure document requirements
-    const { data: existingReqs } = await supabase
-      .from('document_requirements').select('id, doc_type').eq('client_id', client.id);
-    let reqIds: string[] = existingReqs?.map((r: any) => r.id) ?? [];
-    if (!existingReqs || existingReqs.length === 0) {
-      const { data: newReqs, error: reqInsertErr } = await supabase
-        .from('document_requirements')
-        .insert(scenario.requirements.map(r => ({
-          client_id: client.id, name: r.name, doc_type: r.doc_type,
-          tax_year: TAX_YEAR, required: true,
-        }))).select('id');
-      check(`insert requirements (${client.name})`, reqInsertErr);
-      reqIds = newReqs?.map((r: any) => r.id) ?? [];
+    // 2. Prior-year (2024) baseline — fulfilled uploads for YoY comparison
+    const { data: priorReqs, error: priorReqErr } = await supabase
+      .from('document_requirements')
+      .insert(scenario.requirements.map(r => ({
+        client_id: client.id, name: r.name, doc_type: r.doc_type,
+        tax_year: PRIOR_TAX_YEAR, required: true,
+      }))).select('id, doc_type');
+    check(`insert prior-year requirements (${client.name})`, priorReqErr);
+
+    const priorUploads = (priorReqs ?? []).map((req: { id: string; doc_type: string }, i: number) => ({
+      client_id: client.id,
+      requirement_id: req.id,
+      file_name: `${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
+      storage_path: `clients/${client.id}/${PRIOR_TAX_YEAR}/${req.doc_type}/${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
+      file_size: 200000 + i * 1000,
+      mime_type: 'application/pdf',
+      ai_status: 'verified',
+      tax_year: PRIOR_TAX_YEAR,
+      is_prior_year: true,
+      uploaded_by: null,
+    }));
+    if (priorUploads.length > 0) {
+      const { error: priorUpErr } = await supabase.from('document_uploads').insert(priorUploads);
+      check(`insert prior-year uploads (${client.name})`, priorUpErr);
     }
 
-    // 3. Uploads
+    // 3. Current-year (2025) document requirements
+    const { data: newReqs, error: reqInsertErr } = await supabase
+      .from('document_requirements')
+      .insert(scenario.requirements.map(r => ({
+        client_id: client.id, name: r.name, doc_type: r.doc_type,
+        tax_year: CURRENT_TAX_YEAR, required: true,
+      }))).select('id');
+    check(`insert requirements (${client.name})`, reqInsertErr);
+    const reqIds: string[] = newReqs?.map((r: any) => r.id) ?? [];
+
+    // 4. Current-year uploads
     const uploadInserts = scenario.uploads.map((u, i) => ({
       client_id: client.id,
       requirement_id: reqIds[i] ?? null,
-      file_name: u.file_name,
-      storage_path: `clients/${client.id}/${now + i}_${u.file_name}`,
+      file_name: u.file_name.replace(/2024/g, CURRENT_TAX_YEAR),
+      storage_path: `clients/${client.id}/${CURRENT_TAX_YEAR}/${now + i}_${u.file_name}`,
       file_size: u.file_size,
       mime_type: u.mime_type,
       ai_status: u.ai_status,
+      tax_year: CURRENT_TAX_YEAR,
+      is_prior_year: false,
       uploaded_by: null,
     }));
     const { data: insertedUploads, error: uploadErr } = await supabase
