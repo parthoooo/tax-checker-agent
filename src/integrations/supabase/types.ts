@@ -108,6 +108,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          assigned_preparer: string | null
           assigned_staff: string | null
           auth_user_id: string | null
           created_at: string
@@ -119,9 +120,11 @@ export type Database = {
           last_activity: string
           name: string
           phone: string | null
+          reminder_cadence_days: number
           status: string
         }
         Insert: {
+          assigned_preparer?: string | null
           assigned_staff?: string | null
           auth_user_id?: string | null
           created_at?: string
@@ -133,9 +136,11 @@ export type Database = {
           last_activity?: string
           name: string
           phone?: string | null
+          reminder_cadence_days?: number
           status?: string
         }
         Update: {
+          assigned_preparer?: string | null
           assigned_staff?: string | null
           auth_user_id?: string | null
           created_at?: string
@@ -147,6 +152,7 @@ export type Database = {
           last_activity?: string
           name?: string
           phone?: string | null
+          reminder_cadence_days?: number
           status?: string
         }
         Relationships: []
@@ -296,6 +302,85 @@ export type Database = {
           },
         ]
       }
+      input_sheet_entries: {
+        Row: {
+          ai_populated: boolean
+          client_id: string
+          created_at: string
+          field_name: string
+          field_value: string | null
+          id: string
+          section: string
+          tax_year: string
+          verified: boolean
+        }
+        Insert: {
+          ai_populated?: boolean
+          client_id: string
+          created_at?: string
+          field_name: string
+          field_value?: string | null
+          id?: string
+          section: string
+          tax_year?: string
+          verified?: boolean
+        }
+        Update: {
+          ai_populated?: boolean
+          client_id?: string
+          created_at?: string
+          field_name?: string
+          field_value?: string | null
+          id?: string
+          section?: string
+          tax_year?: string
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "input_sheet_entries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      magic_link_tokens: {
+        Row: {
+          client_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "magic_link_tokens_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reminders: {
         Row: {
           body: string
@@ -377,7 +462,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      client_has_active_magic_token: {
+        Args: { _client_id: string }
+        Returns: boolean
+      }
       is_admin: { Args: never; Returns: boolean }
+      resolve_magic_link: {
+        Args: { _token: string }
+        Returns: {
+          assigned_preparer: string
+          client_email: string
+          client_id: string
+          client_name: string
+          expires_at: string
+          token_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
