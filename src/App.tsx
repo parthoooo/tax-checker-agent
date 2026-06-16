@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
+import SignupApprovals from "./pages/admin/SignupApprovals";
 import NotFound from "./pages/NotFound";
 import AppLayout from "@/components/layout/AppLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
@@ -52,6 +53,7 @@ const App = () => (
               {/* Admin + Preparer */}
               <Route path="/dashboard" element={<ProtectedRoute roles={['admin', 'preparer']}><AdminDashboard /></ProtectedRoute>} />
               <Route path="/clients" element={<ProtectedRoute roles={['admin']}><Clients /></ProtectedRoute>} />
+              <Route path="/clients/signups" element={<ProtectedRoute roles={['admin']}><SignupApprovals /></ProtectedRoute>} />
               <Route path="/clients/:id" element={<ProtectedRoute roles={['admin', 'preparer']}><ClientDetail /></ProtectedRoute>} />
               <Route path="/flags" element={<ProtectedRoute roles={['admin', 'preparer']}><Flags /></ProtectedRoute>} />
               <Route path="/activity" element={<ProtectedRoute roles={['admin', 'preparer']}><Activity /></ProtectedRoute>} />

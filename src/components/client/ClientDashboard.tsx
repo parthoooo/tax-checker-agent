@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle, AlertCircle, Upload, LogOut, Mail, Loader2 } from 'lucide-react';
 import DocumentUpload from './DocumentUpload';
 import AnalysisSummary from './AnalysisSummary';
+import PendingAccessScreen from './PendingAccessScreen';
 import { toast } from 'sonner';
 import {
   fetchClientByAuthUser,
@@ -28,7 +29,8 @@ interface DocRow extends DocReq {
 }
 
 const ClientDashboard: React.FC = () => {
-  const { user, session, logout } = useAuth();
+  const { user, session, logout, refreshUser } = useAuth();
+  const [refreshingAccess, setRefreshingAccess] = useState(false);
 
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientEmail, setClientEmail] = useState<string>('');
@@ -113,16 +115,38 @@ const ClientDashboard: React.FC = () => {
     );
   }
 
+  if (user?.approvalStatus === 'pending' || user?.approvalStatus === 'rejected') {
+    return (
+      <PendingAccessScreen
+        status={user.approvalStatus}
+        email={user.email}
+        onRefresh={async () => {
+          setRefreshingAccess(true);
+          try {
+            await refreshUser();
+          } finally {
+            setRefreshingAccess(false);
+          }
+        }}
+        onLogout={logout}
+        refreshing={refreshingAccess}
+      />
+    );
+  }
+
   if (!clientId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full text-center">
           <CardContent className="pt-8 pb-8 space-y-4">
             <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
-            <h2 className="text-lg font-semibold">Account setup in progress</h2>
+            <h2 className="text-lg font-semibold">Almost ready</h2>
             <p className="text-sm text-muted-foreground">
-              Your client profile is being linked. Please sign out and sign back in, or contact your preparer if this persists.
+              Your account was approved but your document checklist is still loading. Click below or contact your preparer.
             </p>
+            <Button variant="default" onClick={() => refreshUser().then(() => loadData())}>
+              Refresh
+            </Button>
             <Button variant="outline" onClick={logout}>Sign Out</Button>
           </CardContent>
         </Card>

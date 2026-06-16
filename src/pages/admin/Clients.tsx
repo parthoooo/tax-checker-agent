@@ -9,11 +9,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Mail, Plus, Search, Loader2 } from 'lucide-react';
+import { Mail, Plus, Search, Loader2, UserCheck } from 'lucide-react';
 import { initials, statusBadge } from '@/lib/mockData';
 import ReminderModal from '@/components/common/ReminderModal';
 import { toast } from 'sonner';
 import { fetchClients } from '@/lib/db';
+import { countPendingSignupRequests } from '@/lib/signupRequests';
 import { supabase } from '@/lib/supabase';
 import { seedAllDemoData } from '@/lib/seedDemoData';
 import type { Database } from '@/lib/database.types';
@@ -29,6 +30,7 @@ const Clients: React.FC = () => {
   const [reminder, setReminder] = useState<Client | null>(null);
   const [seeding, setSeeding]   = useState(false);
   const [seedProgress, setSeedProgress] = useState('');
+  const [pendingSignups, setPendingSignups] = useState(0);
 
   // Add-client form state
   const [newName, setNewName]   = useState('');
@@ -41,6 +43,8 @@ const Clients: React.FC = () => {
       .then(setClients)
       .catch(() => toast.error('Failed to load clients'))
       .finally(() => setLoading(false));
+
+    countPendingSignupRequests().then(setPendingSignups).catch(() => {});
   }, []);
 
   const reload = () =>
@@ -92,6 +96,17 @@ const Clients: React.FC = () => {
         subtitle={`${clients.length} clients this tax season`}
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" asChild className="gap-2">
+              <Link to="/clients/signups">
+                <UserCheck className="w-4 h-4" />
+                Sign-up Approvals
+                {pendingSignups > 0 && (
+                  <Badge variant="destructive" className="ml-1 h-5 min-w-[20px] px-1.5">
+                    {pendingSignups}
+                  </Badge>
+                )}
+              </Link>
+            </Button>
             <Button
               variant="outline"
               onClick={handleSeedDemo}

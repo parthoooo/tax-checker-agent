@@ -117,11 +117,21 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       }
     } else {
       try {
+        const stored = await uploadDocumentToStorage(
+          file, clientId, docType, CURRENT_TAX_YEAR_NUM, replaceMode,
+        );
+        if (!stored.success && replaceMode) {
+          toast.error('Upload failed', { description: stored.error });
+          setOutcome(null);
+          setSelectedFile(null);
+          return;
+        }
+
         const uploadPayload = {
           client_id:      clientId,
           requirement_id: documentId,
           file_name:      file.name,
-          storage_path:   storagePath,
+          storage_path:   stored.storagePath ?? storagePath,
           file_size:      file.size,
           mime_type:      file.type || null,
           ai_status:      aiDbStatus as 'verified' | 'flagged',
@@ -140,7 +150,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           unexpected: 'unexpected',
         };
         const ft = flagTypeMap[analysis.aiStatus] ?? 'unexpected';
-        await createAiFlag({
+        try {
+          await createAiFlag({
           client_id:   clientId,
           upload_id:   upload.id,
           flag_type:   ft,
@@ -148,35 +159,45 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           description: analysis.aiMessage,
           detected_by: 'Doc Classifier Agent',
         });
-
-        if (clientEmail && clientName) {
-          const draftResult = {
-            outcome: ft,
-            title: 'Issue Detected',
-            detail: analysis.aiMessage,
-            aiStatus: 'flagged' as const,
-            confidence: analysis.confidence,
-          };
-          const emailContent = buildEmailDraftBody(
-            clientName,
-            draftResult as any,
-            file.name,
-            'Your Tax Preparer',
-          );
-          await createEmailDraft({
-            client_id:  clientId,
-            to_email:   clientEmail,
-            from_label: 'Your Tax Preparer',
-            subject:    emailContent.subject,
-            body:       emailContent.body,
-            status:     'pending',
-            type:       'outbox',
-          });
+        } catch {
+          // flag insert is best-effort
         }
 
+        if (clientEmail && clientName) {
+          try {
+            const draftResult = {
+              outcome: ft,
+              title: 'Issue Detected',
+              detail: analysis.aiMessage,
+              aiStatus: 'flagged' as const,
+              confidence: analysis.confidence,
+            };
+            const emailContent = buildEmailDraftBody(
+              clientName,
+              draftResult as any,
+              file.name,
+              'Your Tax Preparer',
+            );
+            await createEmailDraft({
+              client_id:  clientId,
+              to_email:   clientEmail,
+              from_label: 'Your Tax Preparer',
+              subject:    emailContent.subject,
+              body:       emailContent.body,
+              status:     'pending',
+              type:       'outbox',
+            });
+          } catch {
+            // draft insert is best-effort
+          }
+        }
+
+        onUpload(documentId, file);
         onAnalysisComplete?.();
-      } catch {
-        // flags/drafts are best-effort
+      } catch (err: any) {
+        toast.error('Upload failed', { description: err?.message ?? 'Could not save document record.' });
+        setOutcome(null);
+        setSelectedFile(null);
       }
     }
   };

@@ -21,7 +21,13 @@ const Index = () => {
     return <Login />;
   }
 
-  return <Navigate to={user.role === 'admin' ? '/dashboard' : '/portal'} replace />;
+  return <Navigate to={
+    user.approvalStatus === 'pending' || user.approvalStatus === 'rejected'
+      ? '/portal'
+      : user.role === 'admin' || user.role === 'preparer'
+        ? '/dashboard'
+        : '/portal'
+  } replace />;
 };
 
 export default Index;

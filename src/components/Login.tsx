@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { formatAuthPasswordError, SIGNUP_PASSWORD_HINT, validateSignupPassword } from '@/lib/passwordPolicy';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -20,15 +21,30 @@ const Login: React.FC = () => {
     setIsLoading(true);
     try {
       if (mode === 'signup') {
-        await signUp(email, password, fullName);
-        toast.success('Account created!', { description: 'You can now upload your tax documents.' });
+        const passwordError = validateSignupPassword(password);
+        if (passwordError) {
+          toast.error('Choose a stronger password', { description: passwordError });
+          setIsLoading(false);
+          return;
+        }
+        if (!fullName.trim()) {
+          toast.error('Full name is required');
+          setIsLoading(false);
+          return;
+        }
+        await signUp(email, password, fullName.trim());
+        toast.success('Account created!', {
+          description: 'Your request was sent for admin approval. You can check status after signing in.',
+        });
       } else {
         await login(email, password);
         toast.success('Welcome back!');
       }
     } catch (error: any) {
+      const raw = error?.message ?? 'Please try again.';
+      const description = formatAuthPasswordError(raw);
       toast.error(mode === 'signup' ? 'Sign up failed' : 'Login failed', {
-        description: error?.message ?? 'Please try again.',
+        description,
       });
     } finally {
       setIsLoading(false);
@@ -95,7 +111,20 @@ const Login: React.FC = () => {
               />
             )}
             <Input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+            <div className="space-y-1">
+              <Input
+                type="password"
+                placeholder={mode === 'signup' ? 'Create a strong password' : 'Password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={mode === 'signup' ? 12 : 6}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              />
+              {mode === 'signup' && (
+                <p className="text-xs text-muted-foreground">{SIGNUP_PASSWORD_HINT}</p>
+              )}
+            </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Please wait…' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
