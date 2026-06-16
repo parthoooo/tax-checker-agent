@@ -422,6 +422,48 @@ export type Database = {
           },
         ]
       }
+      signup_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_role: string | null
+          auth_user_id: string
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          provider: string
+          rejected_reason: string | null
+          status: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_role?: string | null
+          auth_user_id: string
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          provider?: string
+          rejected_reason?: string | null
+          status?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_role?: string | null
+          auth_user_id?: string
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          provider?: string
+          rejected_reason?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       time_entries: {
         Row: {
           client_id: string
