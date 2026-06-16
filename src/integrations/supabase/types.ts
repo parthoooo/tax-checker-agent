@@ -563,14 +563,59 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      client_has_active_magic_token: {
-        Args: { _client_id: string }
-        Returns: boolean
-      }
+      _magic_link_client_id: { Args: { p_token: string }; Returns: string }
       is_admin: { Args: never; Returns: boolean }
-      magic_link_allows_client: {
-        Args: { p_client_id: string }
-        Returns: boolean
+      is_staff: { Args: never; Returns: boolean }
+      magic_link_create_email_draft: {
+        Args: {
+          p_body: string
+          p_client_id: string
+          p_from_label: string
+          p_status?: string
+          p_subject: string
+          p_to_email: string
+          p_token: string
+          p_type?: string
+        }
+        Returns: Json
+      }
+      magic_link_create_flag: {
+        Args: {
+          p_client_id: string
+          p_description: string
+          p_detected_by?: string
+          p_flag_type: string
+          p_severity: string
+          p_token: string
+          p_upload_id: string
+        }
+        Returns: Json
+      }
+      magic_link_log_activity: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_actor_type: string
+          p_client_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      magic_link_upsert_upload: {
+        Args: {
+          p_ai_status: string
+          p_client_id: string
+          p_existing_upload_id: string
+          p_file_name: string
+          p_file_size: number
+          p_is_prior_year?: boolean
+          p_mime_type: string
+          p_requirement_id: string
+          p_storage_path: string
+          p_tax_year?: string
+          p_token: string
+        }
+        Returns: Json
       }
       resolve_magic_link: { Args: { p_token: string }; Returns: Json }
       submit_documents_via_token: { Args: { p_token: string }; Returns: Json }
