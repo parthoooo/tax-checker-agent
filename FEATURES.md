@@ -7,7 +7,7 @@ Living document of all features currently shipped in this app. Update this file 
 - **Client self-signup** — Create Account tab on login page; auto-creates `clients` row, 2025 checklist, and 2024 prior-year baseline
 - Google OAuth sign-in (via Lovable auth integration)
 - Three roles: `admin`, `preparer`, `client` (derived from `user_metadata.role`)
-- Quick demo logins on the login screen (password `password123`, seeded via `seed-demo-users` edge function):
+- Quick demo logins on the login screen (password `BMM-Demo-2026!`, seeded via `seed-demo-users` edge function):
   - Nick Broder — admin (`nick@brodermansoor.com`)
   - Shawn Mansoor — preparer (`shawn@brodermansoor.com`)
   - Girik Patel — preparer (`girik@brodermansoor.com`)
@@ -177,9 +177,9 @@ Every PR/change that adds or materially changes a user-facing feature must updat
 ### Test client accounts (login at `/` → quick demo or Create Account)
 | Account | Email | Password | Role |
 |---------|-------|----------|------|
-| Sean Test Client | `sean.test@brodermansoor.com` | `password123` | client |
-| Girik Test Client | `girik.test@brodermansoor.com` | `password123` | client |
-| John Smith (demo) | `john.smith@email.com` | `password123` | client |
+| Sean Test Client | `sean.test@brodermansoor.com` | `BMM-Demo-2026!` | client |
+| Girik Test Client | `girik.test@brodermansoor.com` | `BMM-Demo-2026!` | client |
+| John Smith (demo) | `john.smith@email.com` | `BMM-Demo-2026!` | client |
 
 Run `seed-demo-users` edge function once to create/reset these accounts and seed 2024 baseline + 2025 checklist.
 
