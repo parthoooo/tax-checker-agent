@@ -8,19 +8,11 @@ import {
   CheckCircle2, AlertCircle, Clock, Upload, FileText, Loader2, XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { resolveMagicLink, submitDocumentsViaMagicLink } from '@/lib/magicLinkDb';
-import {
-  createDocumentUpload,
-  replaceDocumentUpload,
-  createAiFlag,
-  createEmailDraft,
-  logActivity,
-  notifyPreparerOfSubmission,
-} from '@/lib/db';
+import { resolveMagicLink, submitDocumentsViaMagicLink, magicLinkUpsertUpload, magicLinkCreateFlag, magicLinkCreateEmailDraft, magicLinkLogActivity } from '@/lib/magicLinkDb';
 import { buildEmailDraftBody } from '@/lib/aiSimulation';
 import { uploadDocumentToStorage } from '@/utils/uploadDocument';
 import { analyzeDocument } from '@/utils/analyzeDocument';
-import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
+import { compareDocuments } from '@/lib/documentComparison';
 import AnalysisSummary from '@/components/client/AnalysisSummary';
 import type { ComparisonResult } from '@/lib/documentComparison';
 import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR, CURRENT_TAX_YEAR_NUM } from '@/lib/taxConfig';
@@ -48,20 +40,26 @@ const MagicLinkPortal: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
 
   const refreshAnalysis = useCallback(async () => {
-    if (!client) return;
+    if (!token || !client) return;
     setAnalysisLoading(true);
     try {
-      const result = await runDocumentAnalysis(
-        client.id,
-        client.name,
-        client.email,
-        client.assigned_preparer ?? 'Your Tax Preparer',
+      const payload = await resolveMagicLink(token);
+      if (!payload || payload === 'expired') return;
+      const uploadsByReq = new Map(payload.uploads.map(u => [u.requirement_id, u]));
+      const currentUploads = payload.requirements
+        .map(r => uploadsByReq.get(r.id))
+        .filter(Boolean) as DocUpload[];
+      const result = compareDocuments(
+        payload.requirements,
+        currentUploads,
+        payload.prior_uploads ?? [],
+        payload.prior_requirements ?? [],
       );
       setAnalysisResult(result);
     } finally {
       setAnalysisLoading(false);
     }
-  }, [client]);
+  }, [token, client]);
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
@@ -79,7 +77,7 @@ const MagicLinkPortal: React.FC = () => {
   }, [token]);
 
   const handleFileChange = useCallback(async (req: ReqWithUpload, file: File) => {
-    if (!client) return;
+    if (!client || !token) return;
 
     setRequirements(prev => prev.map(r =>
       r.id === req.id ? { ...r, uploadState: 'uploading' } : r
@@ -108,12 +106,12 @@ const MagicLinkPortal: React.FC = () => {
 
     if (analysis.aiStatus === 'verified') {
       const stored = await uploadDocumentToStorage(
-        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, !!req.upload,
+        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, !!req.upload, token,
       );
       if (stored.storagePath) storagePath = stored.storagePath;
     } else if (req.upload) {
       const stored = await uploadDocumentToStorage(
-        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, true,
+        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, true, token,
       );
       if (!stored.success) {
         setRequirements(prev => prev.map(r =>
@@ -126,22 +124,17 @@ const MagicLinkPortal: React.FC = () => {
     }
 
     try {
-      const uploadPayload = {
-        client_id: client.id,
-        requirement_id: req.id,
-        file_name: file.name,
-        storage_path: storagePath,
-        file_size: file.size,
-        mime_type: file.type || 'application/octet-stream',
-        ai_status: aiDbStatus as 'verified' | 'flagged',
-        tax_year: CURRENT_TAX_YEAR,
-        is_prior_year: false,
-        uploaded_by: null,
-      };
-
-      const upload = req.upload
-        ? await replaceDocumentUpload(req.upload.id, uploadPayload)
-        : await createDocumentUpload(uploadPayload);
+      const upload = await magicLinkUpsertUpload(token, {
+        existingUploadId: req.upload?.id,
+        clientId: client.id,
+        requirementId: req.id,
+        fileName: file.name,
+        storagePath,
+        fileSize: file.size,
+        mimeType: file.type || 'application/octet-stream',
+        aiStatus: aiDbStatus,
+        taxYear: CURRENT_TAX_YEAR,
+      });
 
       if (analysis.aiStatus !== 'verified') {
         const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
@@ -150,13 +143,12 @@ const MagicLinkPortal: React.FC = () => {
           unexpected: 'unexpected',
         };
         const ft = flagTypeMap[analysis.aiStatus] ?? 'unexpected';
-        await createAiFlag({
-          client_id:   client.id,
-          upload_id:   upload.id,
-          flag_type:   ft,
-          severity:    ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
+        await magicLinkCreateFlag(token, {
+          clientId: client.id,
+          uploadId: upload.id,
+          flagType: ft,
+          severity: ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
           description: analysis.aiMessage,
-          detected_by: 'Doc Classifier Agent',
         });
 
         const draftResult = {
@@ -170,23 +162,21 @@ const MagicLinkPortal: React.FC = () => {
           client.name,
           draftResult as any,
           file.name,
-          client.assigned_preparer ?? 'Your Tax Preparer'
+          client.assigned_preparer ?? 'Your Tax Preparer',
         );
-        await createEmailDraft({
-          client_id:  client.id,
-          to_email:   client.email,
-          from_label: client.assigned_preparer ?? 'Your Tax Preparer',
-          subject:    emailContent.subject,
-          body:       emailContent.body,
-          status:     'pending',
-          type:       'outbox',
+        await magicLinkCreateEmailDraft(token, {
+          clientId: client.id,
+          toEmail: client.email,
+          fromLabel: client.assigned_preparer ?? 'Your Tax Preparer',
+          subject: emailContent.subject,
+          body: emailContent.body,
         });
       }
 
-      await logActivity({
-        client_id: client.id,
+      await magicLinkLogActivity(token, {
+        clientId: client.id,
         actor: client.name,
-        actor_type: 'client',
+        actorType: 'client',
         action: `Uploaded ${file.name} via magic link portal`,
       });
 
@@ -213,7 +203,7 @@ const MagicLinkPortal: React.FC = () => {
       ));
       toast.error('Upload failed. Please try again.');
     }
-  }, [client, requirements, refreshAnalysis]);
+  }, [client, requirements, refreshAnalysis, token]);
 
   const verifiedCount = requirements.filter(r => r.upload?.ai_status === 'verified').length;
   const uploadedCount = requirements.filter(r => r.required && r.upload).length;
@@ -232,18 +222,6 @@ const MagicLinkPortal: React.FC = () => {
       if (result.error || !result.ok) {
         throw new Error(result.error ?? 'Submission failed');
       }
-
-      await notifyPreparerOfSubmission(client.id, {
-        clientName: client.name,
-        clientEmail: client.email,
-        documentNames: requirements
-          .filter(r => r.upload)
-          .map(r => r.name),
-      }).catch(() => {
-        toast.warning('Submitted, but preparer notification could not be queued.', {
-          description: 'Your documents were still marked as submitted.',
-        });
-      });
 
       setSubmitted(true);
       setClient({ ...client, status: 'complete' });
