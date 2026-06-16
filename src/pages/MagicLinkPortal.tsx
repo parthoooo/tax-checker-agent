@@ -117,7 +117,7 @@ const MagicLinkPortal: React.FC = () => {
         storage_path: storagePath,
         file_size: file.size,
         mime_type: file.type || 'application/octet-stream',
-        ai_status: aiDbStatus,
+        ai_status: aiDbStatus as 'verified' | 'flagged',
         tax_year: CURRENT_TAX_YEAR,
         is_prior_year: false,
         uploaded_by: null,
