@@ -57,6 +57,11 @@ import {
 } from '@/lib/db';
 import { getDocumentComparison } from '@/lib/getDocumentComparison';
 import { sendClientCorrection, resolveClientCorrection } from '@/lib/clientCorrections';
+import {
+  setPriorYearUploadEnabled,
+  unlockTaxYearUpload,
+  unlockClientProfession,
+} from '@/lib/clientPortalSettings';
 import { useAuth } from '@/contexts/AuthContext';
 import type { ComparisonResult } from '@/lib/documentComparison';
 import {
@@ -94,6 +99,7 @@ const ClientDetail: React.FC = () => {
   const [sendingCorrection, setSendingCorrection] = useState(false);
   const [seedingBaseline, setSeedingBaseline] = useState(false);
   const [savingBusinessType, setSavingBusinessType] = useState(false);
+  const [portalSaving, setPortalSaving] = useState(false);
 
   const reloadClientData = async () => {
     const [c, reqs, ups, allFlags, allActivity] = await Promise.all([
@@ -199,7 +205,7 @@ const ClientDetail: React.FC = () => {
       await seedPriorYearTestBaseline(client.id, businessType);
       await reloadClientData();
       toast.success(`${PRIOR_TAX_YEAR} test baseline created`, {
-        description: `Verified placeholder uploads for ${BUSINESS_TYPE_LABELS[businessType]} template.`,
+        description: 'Admin-only YoY comparison seeds (not client uploads). Client portal is unchanged.',
       });
     } catch (err: any) {
       toast.error('Baseline setup failed', { description: err?.message });
@@ -212,15 +218,58 @@ const ClientDetail: React.FC = () => {
     if (!client) return;
     setSavingBusinessType(true);
     try {
-      const updated = await updateClientBusinessType(client.id, value);
-      setClient(updated);
-      toast.success('Business type updated', {
-        description: 'Use "Set up 2024 test baseline" for new test clients without prior-year history.',
+      await updateClientBusinessType(client.id, value, CURRENT_TAX_YEAR);
+      await reloadClientData();
+      toast.success('Profession applied', {
+        description: `${CURRENT_TAX_YEAR} checklist updated for ${BUSINESS_TYPE_LABELS[value]}.`,
       });
     } catch (err: any) {
       toast.error('Update failed', { description: err?.message });
     } finally {
       setSavingBusinessType(false);
+    }
+  };
+
+  const handleTogglePriorYear = async () => {
+    if (!client) return;
+    setPortalSaving(true);
+    try {
+      const next = !client.prior_year_upload_enabled;
+      await setPriorYearUploadEnabled(client.id, next);
+      await reloadClientData();
+      toast.success(next ? `${PRIOR_TAX_YEAR} uploads enabled on portal` : `${PRIOR_TAX_YEAR} uploads disabled`);
+    } catch (err: any) {
+      toast.error('Update failed', { description: err?.message });
+    } finally {
+      setPortalSaving(false);
+    }
+  };
+
+  const handleUnlockYear = async (taxYear: string) => {
+    if (!client) return;
+    setPortalSaving(true);
+    try {
+      await unlockTaxYearUpload(client.id, taxYear);
+      await reloadClientData();
+      toast.success(`${taxYear} re-upload unlocked for client`);
+    } catch (err: any) {
+      toast.error('Unlock failed', { description: err?.message });
+    } finally {
+      setPortalSaving(false);
+    }
+  };
+
+  const handleUnlockProfession = async () => {
+    if (!client) return;
+    setPortalSaving(true);
+    try {
+      await unlockClientProfession(client.id);
+      await reloadClientData();
+      toast.success('Client can change profession on portal again');
+    } catch (err: any) {
+      toast.error('Unlock failed', { description: err?.message });
+    } finally {
+      setPortalSaving(false);
     }
   };
 
@@ -372,6 +421,23 @@ const ClientDetail: React.FC = () => {
                   {seedingBaseline ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
                   Set up {PRIOR_TAX_YEAR} test baseline
                 </Button>
+                <p className="text-xs text-muted-foreground w-full">
+                  Seeds verified placeholder {PRIOR_TAX_YEAR} files for YoY AI comparison only — clients do not upload here.
+                </p>
+                <Button variant="outline" onClick={handleTogglePriorYear} disabled={portalSaving}>
+                  {client.prior_year_upload_enabled ? `Disable ${PRIOR_TAX_YEAR} on portal` : `Enable ${PRIOR_TAX_YEAR} on portal`}
+                </Button>
+                <Button variant="outline" onClick={() => handleUnlockYear(CURRENT_TAX_YEAR)} disabled={portalSaving}>
+                  Unlock {CURRENT_TAX_YEAR} re-upload
+                </Button>
+                <Button variant="outline" onClick={() => handleUnlockYear(PRIOR_TAX_YEAR)} disabled={portalSaving}>
+                  Unlock {PRIOR_TAX_YEAR} re-upload
+                </Button>
+                {client.profession_locked && (
+                  <Button variant="outline" onClick={handleUnlockProfession} disabled={portalSaving}>
+                    Unlock profession on portal
+                  </Button>
+                )}
                 <Button variant="outline" onClick={handleRunAiReview} disabled={analysisLoading}>
                   {analysisLoading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
                   Run AI Review

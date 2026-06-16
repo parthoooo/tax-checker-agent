@@ -12,7 +12,7 @@ import {
 import { uploadDocumentToStorage } from '@/utils/uploadDocument';
 import { analyzeDocument } from '@/utils/analyzeDocument';
 import { buildEmailDraftBody } from '@/lib/aiSimulation';
-import { CURRENT_TAX_YEAR, CURRENT_TAX_YEAR_NUM } from '@/lib/taxConfig';
+import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DocumentUploadProps {
@@ -27,6 +27,8 @@ interface DocumentUploadProps {
   onAnalysisComplete?: () => void;
   replaceMode?: boolean;
   existingUploadId?: string;
+  taxYear?: string;
+  uploadDisabled?: boolean;
 }
 
 const DocumentUpload: React.FC<DocumentUploadProps> = ({
@@ -41,7 +43,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   onAnalysisComplete,
   replaceMode = false,
   existingUploadId,
+  taxYear = CURRENT_TAX_YEAR,
+  uploadDisabled = false,
 }) => {
+  const taxYearNum = parseInt(taxYear, 10);
   const { user, session } = useAuth();
   const [isDragOver, setIsDragOver]     = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -50,6 +55,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [message, setMessage]           = useState('');
 
   const handleFile = async (file: File) => {
+    if (uploadDisabled) {
+      toast.error('Uploads locked', { description: 'This tax year is locked. Contact your preparer to unlock.' });
+      return;
+    }
     setSelectedFile(file);
     setOutcome(null);
     setIsAnalyzing(true);
@@ -67,11 +76,11 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     setMessage(analysis.aiMessage || '');
 
     const aiDbStatus = analysis.aiStatus === 'verified' ? 'verified' : 'flagged';
-    const storagePath = `clients/${clientId}/${CURRENT_TAX_YEAR}/${docType}/${file.name.replace(/\s+/g, '_')}`;
+    const storagePath = `clients/${clientId}/${taxYear}/${docType}/${file.name.replace(/\s+/g, '_')}`;
 
     if (analysis.aiStatus === 'verified') {
       const stored = await uploadDocumentToStorage(
-        file, clientId, docType, CURRENT_TAX_YEAR_NUM, replaceMode,
+        file, clientId, docType, taxYearNum, replaceMode,
       );
       if (!stored.success) {
         toast.error('Upload failed', { description: stored.error });
@@ -88,7 +97,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         file_size:      file.size,
         mime_type:      file.type || null,
         ai_status:      'verified' as const,
-        tax_year:       CURRENT_TAX_YEAR,
+        tax_year:       taxYear,
         is_prior_year:  false,
         uploaded_by:    session?.user?.id ?? null,
       };
@@ -118,7 +127,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     } else {
       try {
         const stored = await uploadDocumentToStorage(
-          file, clientId, docType, CURRENT_TAX_YEAR_NUM, replaceMode,
+          file, clientId, docType, taxYearNum, replaceMode,
         );
         if (!stored.success && replaceMode) {
           toast.error('Upload failed', { description: stored.error });
@@ -220,7 +229,12 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
   return (
     <div className="space-y-3">
-      {!selectedFile && (
+      {uploadDisabled && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+          Uploads for this tax year are locked. Contact your preparer if you need to make changes.
+        </p>
+      )}
+      {!selectedFile && !uploadDisabled && (
         <>
           <div
             className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${

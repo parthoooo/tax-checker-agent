@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { fetchClients, fetchDocumentRequirements, fetchDocumentUploads, fetchPriorYearUploads } from '@/lib/db';
-import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
+import { fetchClients, fetchDocumentRequirements, fetchDocumentUploads, fetchPriorYearUploads, generateMagicToken } from '@/lib/db';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR, docTypeLabel } from '@/lib/taxConfig';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ interface VaultFile {
   id: string;
   clientId: string;
   docType: string;
+  docTypeSlug?: string;
   taxYear: number;
   filename: string;
   size: number;
@@ -195,11 +196,25 @@ const FileCard: React.FC<FileCardProps> = ({ file, onDelete }) => {
 
 // ─── Empty state placeholder card ────────────────────────────────────────────
 
-const PlaceholderCard: React.FC<{ docType: string; clientSlug: string }> = ({ docType, clientSlug }) => {
-  const copyLink = () => {
-    navigator.clipboard.writeText(`${MOCK_UPLOAD_BASE}${clientSlug}`)
-      .then(() => toast.success('Upload link copied'))
-      .catch(() => toast.error('Failed to copy link'));
+const PlaceholderCard: React.FC<{ docType: string; clientSlug: string; supabaseId?: string }> = ({
+  docType,
+  clientSlug,
+  supabaseId,
+}) => {
+  const copyLink = async () => {
+    try {
+      let url: string;
+      if (supabaseId) {
+        const token = await generateMagicToken(supabaseId);
+        url = `${window.location.origin}/upload/${token}`;
+      } else {
+        url = `${MOCK_UPLOAD_BASE}${clientSlug}`;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success('Upload link copied');
+    } catch {
+      toast.error('Failed to copy link');
+    }
   };
 
   return (
@@ -227,6 +242,7 @@ const VaultPage: React.FC = () => {
   const [clients, setClients]       = useState<MockClient[]>(MOCK_CLIENTS);
   const [selected, setSelected]     = useState<MockClient>(MOCK_CLIENTS[0]);
   const [files, setFiles]           = useState<VaultFile[]>([]);
+  const [vaultReqs, setVaultReqs]   = useState<{ doc_type: string; name: string }[]>([]);
   const [loading, setLoading]       = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null);
   const [deleting, setDeleting]     = useState(false);
@@ -291,19 +307,25 @@ const VaultPage: React.FC = () => {
       ]);
       const reqs = [...reqsCurrent, ...reqsPrior];
       const uploads = [...uploadsCurrent, ...uploadsPrior];
+      setVaultReqs(reqs.map(r => ({ doc_type: r.doc_type, name: r.name })));
 
       if (uploads.length > 0) {
-        realFiles = uploads.map(u => ({
-          id: u.id,
-          clientId: client.slug,
-          docType: reqs.find(r => r.id === u.requirement_id)?.name ?? inferDocType(u.storage_path),
-          taxYear: parseInt(u.tax_year ?? '2025', 10),
-          filename: u.file_name,
-          size: u.file_size ?? 0,
-          aiStatus: mapDbAiStatus(u.ai_status),
-          uploadedAt: u.uploaded_at,
-          storagePath: u.storage_path,
-        }));
+        realFiles = uploads.map(u => {
+          const req = reqs.find(r => r.id === u.requirement_id);
+          const slug = req?.doc_type ?? inferDocTypeSlug(u.storage_path);
+          return {
+            id: u.id,
+            clientId: client.slug,
+            docType: req?.name ?? docTypeLabel(slug),
+            docTypeSlug: slug,
+            taxYear: parseInt(u.tax_year ?? CURRENT_TAX_YEAR, 10),
+            filename: u.file_name,
+            size: u.file_size ?? 0,
+            aiStatus: mapDbAiStatus(u.ai_status),
+            uploadedAt: u.uploaded_at,
+            storagePath: u.storage_path,
+          };
+        });
       }
     } catch { /* fall through to mock */ }
 
@@ -334,11 +356,22 @@ const VaultPage: React.FC = () => {
     setDeleting(false);
   };
 
-  // Group files by doc type, then build a grid entry per required type
-  const grouped = REQUIRED_DOC_TYPES.map(dt => ({
-    docType: dt,
-    files: files.filter(f => f.docType === dt || f.docType.toLowerCase() === dt.toLowerCase()),
-  }));
+  // Group files by requirement doc_type (matches checklist), fallback to mock labels
+  const grouped = vaultReqs.length > 0
+    ? vaultReqs.map(r => ({
+        docType: r.name,
+        docTypeSlug: r.doc_type,
+        files: files.filter(
+          f => (f.docTypeSlug ?? f.docType) === r.doc_type || f.docType === r.name,
+        ),
+      }))
+    : REQUIRED_DOC_TYPES.map(dt => ({
+        docType: dt,
+        docTypeSlug: dt,
+        files: files.filter(
+          f => f.docType === dt || f.docTypeSlug === dt || f.docType.toLowerCase() === dt.toLowerCase(),
+        ),
+      }));
 
   // Mobile client selector
   const MobileSelector = (
@@ -463,7 +496,11 @@ const VaultPage: React.FC = () => {
                         <FileCard key={f.id} file={f} onDelete={setDeleteTarget} />
                       ))}
                       {dtFiles.length === 0 && (
-                        <PlaceholderCard docType={docType} clientSlug={selected.slug} />
+                        <PlaceholderCard
+                          docType={docType}
+                          clientSlug={selected.slug}
+                          supabaseId={selected.supabaseId}
+                        />
                       )}
                     </div>
                   </div>
@@ -500,10 +537,14 @@ const VaultPage: React.FC = () => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function inferDocType(storagePath: string): string {
+function inferDocTypeSlug(storagePath: string): string {
   const parts = storagePath.split('/');
   if (parts.length >= 4) return parts[3];
-  return 'General';
+  return 'general';
+}
+
+function inferDocType(storagePath: string): string {
+  return docTypeLabel(inferDocTypeSlug(storagePath));
 }
 
 function mapDbAiStatus(status: string): FileAiStatus {
