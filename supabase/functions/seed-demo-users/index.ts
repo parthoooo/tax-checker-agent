@@ -12,13 +12,15 @@ const DEFAULT_REQUIREMENTS = [
   { name: "Schedule C", doc_type: "sched-c" },
 ];
 
+const DEMO_PASSWORD = "BMM-Demo-2026!";
+
 const DEMO_USERS = [
-  { email: "nick@brodermansoor.com",       password: "password123", full_name: "Nick Broder",   role: "admin" },
-  { email: "shawn@brodermansoor.com",      password: "password123", full_name: "Shawn Mansoor", role: "preparer" },
-  { email: "girik@brodermansoor.com",      password: "password123", full_name: "Girik Patel",   role: "preparer" },
-  { email: "john.smith@email.com",         password: "password123", full_name: "John Smith",    role: "client" },
-  { email: "sean.test@brodermansoor.com",  password: "password123", full_name: "Sean Test Client",  role: "client" },
-  { email: "girik.test@brodermansoor.com", password: "password123", full_name: "Girik Test Client", role: "client" },
+  { email: "nick@brodermansoor.com",       password: DEMO_PASSWORD, full_name: "Nick Broder",   role: "admin" },
+  { email: "shawn@brodermansoor.com",      password: DEMO_PASSWORD, full_name: "Shawn Mansoor", role: "preparer" },
+  { email: "girik@brodermansoor.com",      password: DEMO_PASSWORD, full_name: "Girik Patel",   role: "preparer" },
+  { email: "john.smith@email.com",         password: DEMO_PASSWORD, full_name: "John Smith",    role: "client" },
+  { email: "sean.test@brodermansoor.com",  password: DEMO_PASSWORD, full_name: "Sean Test Client",  role: "client" },
+  { email: "girik.test@brodermansoor.com", password: DEMO_PASSWORD, full_name: "Girik Test Client", role: "client" },
 ];
 
 const PRIOR_TAX_YEAR = "2024";

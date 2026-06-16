@@ -38,13 +38,15 @@ export const useAuth = () => {
   return context;
 };
 
+const DEMO_PASSWORD = 'BMM-Demo-2026!';
+
 const DEMO_CREDENTIALS = {
-  admin:            { email: 'nick@brodermansoor.com',       password: 'password123' },
-  'preparer-shawn': { email: 'shawn@brodermansoor.com',      password: 'password123' },
-  'preparer-girik': { email: 'girik@brodermansoor.com',      password: 'password123' },
-  client:           { email: 'john.smith@email.com',         password: 'password123' },
-  'client-sean':    { email: 'sean.test@brodermansoor.com',  password: 'password123' },
-  'client-girik':   { email: 'girik.test@brodermansoor.com', password: 'password123' },
+  admin:            { email: 'nick@brodermansoor.com',       password: DEMO_PASSWORD },
+  'preparer-shawn': { email: 'shawn@brodermansoor.com',      password: DEMO_PASSWORD },
+  'preparer-girik': { email: 'girik@brodermansoor.com',      password: DEMO_PASSWORD },
+  client:           { email: 'john.smith@email.com',         password: DEMO_PASSWORD },
+  'client-sean':    { email: 'sean.test@brodermansoor.com',  password: DEMO_PASSWORD },
+  'client-girik':   { email: 'girik.test@brodermansoor.com', password: DEMO_PASSWORD },
 };
 
 async function ensureClientProfile(authUserId: string, email: string, fullName: string): Promise<void> {

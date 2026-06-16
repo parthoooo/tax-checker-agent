@@ -11,8 +11,8 @@ DECLARE
   v_client_id uuid;
   v_expires timestamptz;
   v_token_id uuid;
-  v_reqs json;
-  v_uploads json;
+  v_reqs jsonb;
+  v_uploads jsonb;
 BEGIN
   SELECT t.client_id, t.expires_at, t.id
   INTO v_client_id, v_expires, v_token_id
@@ -27,20 +27,20 @@ BEGIN
     RETURN json_build_object('expired', true);
   END IF;
 
-  SELECT coalesce(json_agg(r ORDER BY r.created_at), '[]'::json)
+  SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.created_at), '[]'::jsonb)
   INTO v_reqs
   FROM document_requirements r
   WHERE r.client_id = v_client_id
     AND r.tax_year = '2025';
 
-  IF v_reqs = '[]'::json OR v_reqs IS NULL THEN
-    SELECT coalesce(json_agg(r ORDER BY r.created_at), '[]'::json)
+  IF v_reqs IS NULL OR v_reqs = '[]'::jsonb THEN
+    SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.created_at), '[]'::jsonb)
     INTO v_reqs
     FROM document_requirements r
     WHERE r.client_id = v_client_id;
   END IF;
 
-  SELECT coalesce(json_agg(u ORDER BY u.uploaded_at DESC), '[]'::json)
+  SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY u.uploaded_at DESC), '[]'::jsonb)
   INTO v_uploads
   FROM document_uploads u
   WHERE u.client_id = v_client_id
