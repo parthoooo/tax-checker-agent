@@ -18,6 +18,7 @@ import PendingAccessScreen from './PendingAccessScreen';
 import ClientActionRequired from './ClientActionRequired';
 import { fetchActiveClientCorrection } from '@/lib/clientCorrections';
 import type { ComparisonResult } from '@/lib/documentComparison';
+import { effectiveUploadAiStatus } from '@/lib/documentComparison';
 import { toast } from 'sonner';
 import {
   fetchClientByAuthUser,
@@ -218,7 +219,9 @@ const ClientDashboard: React.FC = () => {
   };
 
   const uploadedCount  = docs.filter(d => d.required && d.upload).length;
-  const verifiedCount  = docs.filter(d => d.required && d.upload?.ai_status === 'verified').length;
+  const verifiedCount  = docs.filter(
+    d => d.required && effectiveUploadAiStatus(d.upload, selectedTaxYear) === 'verified',
+  ).length;
   const totalCount     = docs.filter(d => d.required).length;
   const progress       = totalCount > 0 ? (uploadedCount / totalCount) * 100 : 0;
   const allSlotsFilled = totalCount > 0 && uploadedCount === totalCount;
@@ -535,7 +538,8 @@ const ClientDashboard: React.FC = () => {
             <div className="grid gap-4">
               {docs.filter(d => d.required).map((doc) => {
                 const hasUpload = !!doc.upload;
-                const verified = doc.upload?.ai_status === 'verified';
+                const displayStatus = effectiveUploadAiStatus(doc.upload, selectedTaxYear);
+                const verified = displayStatus === 'verified';
                 return (
                   <div key={doc.id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -555,6 +559,7 @@ const ClientDashboard: React.FC = () => {
                       </Badge>
                     </div>
                     <DocumentUpload
+                      key={`${doc.id}-${selectedTaxYear}`}
                       documentId={doc.id}
                       documentName={doc.name}
                       docType={doc.doc_type}

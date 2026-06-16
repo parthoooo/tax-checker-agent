@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, FileText, X, Loader2, AlertTriangle, CheckCircle2, Copy, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,6 +54,13 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [outcome, setOutcome]           = useState<string | null>(null);
   const [message, setMessage]           = useState('');
 
+  useEffect(() => {
+    setSelectedFile(null);
+    setOutcome(null);
+    setMessage('');
+    setIsAnalyzing(false);
+  }, [taxYear, documentId]);
+
   const handleFile = async (file: File) => {
     if (uploadDisabled) {
       toast.error('Uploads locked', { description: 'This tax year is locked. Contact your preparer to unlock.' });
@@ -69,6 +76,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       requirementDocType: docType,
       clientId,
       existingFilenames,
+      expectedTaxYear: taxYear,
     });
 
     setIsAnalyzing(false);

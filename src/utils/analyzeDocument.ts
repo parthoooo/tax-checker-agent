@@ -1,5 +1,10 @@
 import { supabase } from '@/lib/supabase';
-import { analyzeDocumentMock, type AnalyzeDocumentResult } from '@/lib/documentComparison';
+import {
+  analyzeDocumentMock,
+  reconcileAnalysisForTaxYear,
+  type AnalyzeDocumentResult,
+} from '@/lib/documentComparison';
+import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
 
 export interface AnalyzeDocumentInput {
   fileName: string;
@@ -7,9 +12,13 @@ export interface AnalyzeDocumentInput {
   requirementDocType: string;
   clientId: string;
   existingFilenames: string[];
+  expectedTaxYear?: string;
 }
 
 export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<AnalyzeDocumentResult> {
+  const expectedTaxYear = input.expectedTaxYear ?? CURRENT_TAX_YEAR;
+  let result: AnalyzeDocumentResult | null = null;
+
   try {
     const { data, error } = await supabase.functions.invoke('analyze-document', {
       body: {
@@ -18,19 +27,25 @@ export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<Anal
         requirementDocType: input.requirementDocType,
         clientId: input.clientId,
         existingFilenames: input.existingFilenames,
+        expectedTaxYear,
       },
     });
 
     if (!error && data?.docType) {
-      return data as AnalyzeDocumentResult;
+      result = data as AnalyzeDocumentResult;
     }
   } catch {
     // Fall through to local mock analyzer
   }
 
-  return analyzeDocumentMock(
-    input.fileName,
-    input.requirementDocType,
-    input.existingFilenames,
-  );
+  if (!result) {
+    result = analyzeDocumentMock(
+      input.fileName,
+      input.requirementDocType,
+      input.existingFilenames,
+      expectedTaxYear,
+    );
+  }
+
+  return reconcileAnalysisForTaxYear(result, input.fileName, expectedTaxYear);
 }

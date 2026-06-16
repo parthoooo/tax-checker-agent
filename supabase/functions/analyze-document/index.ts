@@ -11,6 +11,7 @@ interface AnalyzeInput {
   requirementDocType: string;
   clientId: string;
   existingFilenames: string[];
+  expectedTaxYear?: string;
 }
 
 function detectDocType(filename: string): string {
@@ -45,8 +46,9 @@ function analyzeMock(input: AnalyzeInput) {
   const detectedLabel = detectDocType(input.fileName);
   const detectedSlug = normalizeDocTypeSlug(detectedLabel);
   const expectedSlug = normalizeDocTypeSlug(input.requirementDocType);
+  const expectedTaxYear = input.expectedTaxYear ?? CURRENT_TAX_YEAR;
   const yearMatch = fn.match(/20\d{2}/);
-  const taxYear = yearMatch?.[0] ?? CURRENT_TAX_YEAR;
+  const taxYear = yearMatch?.[0] ?? expectedTaxYear;
 
   if (input.existingFilenames.some((n) => n.toLowerCase() === fn)) {
     return {
@@ -72,7 +74,7 @@ function analyzeMock(input: AnalyzeInput) {
     };
   }
 
-  if (yearMatch && yearMatch[0] !== CURRENT_TAX_YEAR) {
+  if (yearMatch && yearMatch[0] !== expectedTaxYear) {
     return {
       docType: detectedLabel,
       docTypeSlug: detectedSlug,
@@ -80,7 +82,7 @@ function analyzeMock(input: AnalyzeInput) {
       confidence: 97,
       issues: [{ type: "wrong-year", message: `Year ${yearMatch[0]} detected.` }],
       aiStatus: "wrong_year",
-      aiMessage: `Tax year ${yearMatch[0]} detected; ${CURRENT_TAX_YEAR} is required.`,
+      aiMessage: `Tax year ${yearMatch[0]} detected; ${expectedTaxYear} is required.`,
     };
   }
 
@@ -88,7 +90,7 @@ function analyzeMock(input: AnalyzeInput) {
     return {
       docType: detectedLabel,
       docTypeSlug: detectedSlug,
-      taxYear: CURRENT_TAX_YEAR,
+      taxYear: expectedTaxYear,
       confidence: 94,
       issues: [{ type: "wrong-type", message: `Expected ${expectedSlug}, got ${detectedSlug}.` }],
       aiStatus: "unexpected",
@@ -99,7 +101,7 @@ function analyzeMock(input: AnalyzeInput) {
   return {
     docType: detectedLabel,
     docTypeSlug: detectedSlug,
-    taxYear: CURRENT_TAX_YEAR,
+    taxYear: expectedTaxYear,
     confidence: 96,
     issues: [],
     aiStatus: "verified",
@@ -118,7 +120,8 @@ async function analyzeWithAnthropic(input: AnalyzeInput): Promise<ReturnType<typ
   if (!apiKey) return null;
 
   // Phase 1b: filename-only prompt until PDF OCR is wired
-  const prompt = `Analyze tax document filename "${input.fileName}" for requirement type "${input.requirementDocType}" and tax year ${CURRENT_TAX_YEAR}. Return JSON: { docType, taxYear, aiStatus, aiMessage }`;
+  const expectedTaxYear = input.expectedTaxYear ?? CURRENT_TAX_YEAR;
+  const prompt = `Analyze tax document filename "${input.fileName}" for requirement type "${input.requirementDocType}" and tax year ${expectedTaxYear}. Return JSON: { docType, taxYear, aiStatus, aiMessage }`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
