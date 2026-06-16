@@ -4,6 +4,7 @@ import { Upload, FileText, X, Loader2, AlertTriangle, CheckCircle2, Copy, FileWa
 import { toast } from 'sonner';
 import {
   createDocumentUpload,
+  replaceDocumentUpload,
   createAiFlag,
   createEmailDraft,
   logActivity,
@@ -24,6 +25,8 @@ interface DocumentUploadProps {
   existingFilenames: string[];
   onUpload: (documentId: string, file: File) => void;
   onAnalysisComplete?: () => void;
+  replaceMode?: boolean;
+  existingUploadId?: string;
 }
 
 const DocumentUpload: React.FC<DocumentUploadProps> = ({
@@ -36,6 +39,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   existingFilenames,
   onUpload,
   onAnalysisComplete,
+  replaceMode = false,
+  existingUploadId,
 }) => {
   const { user, session } = useAuth();
   const [isDragOver, setIsDragOver]     = useState(false);
@@ -65,7 +70,9 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     const storagePath = `clients/${clientId}/${CURRENT_TAX_YEAR}/${docType}/${file.name.replace(/\s+/g, '_')}`;
 
     if (analysis.aiStatus === 'verified') {
-      const stored = await uploadDocumentToStorage(file, clientId, docType, CURRENT_TAX_YEAR_NUM);
+      const stored = await uploadDocumentToStorage(
+        file, clientId, docType, CURRENT_TAX_YEAR_NUM, replaceMode,
+      );
       if (!stored.success) {
         toast.error('Upload failed', { description: stored.error });
         setOutcome(null);
@@ -73,19 +80,25 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         return;
       }
 
+      const uploadPayload = {
+        client_id:      clientId,
+        requirement_id: documentId,
+        file_name:      file.name,
+        storage_path:   stored.storagePath ?? storagePath,
+        file_size:      file.size,
+        mime_type:      file.type || null,
+        ai_status:      'verified' as const,
+        tax_year:       CURRENT_TAX_YEAR,
+        is_prior_year:  false,
+        uploaded_by:    session?.user?.id ?? null,
+      };
+
       try {
-        await createDocumentUpload({
-          client_id:      clientId,
-          requirement_id: documentId,
-          file_name:      file.name,
-          storage_path:   stored.storagePath ?? storagePath,
-          file_size:      file.size,
-          mime_type:      file.type || null,
-          ai_status:      'verified',
-          tax_year:       CURRENT_TAX_YEAR,
-          is_prior_year:  false,
-          uploaded_by:    session?.user?.id ?? null,
-        });
+        if (replaceMode && existingUploadId) {
+          await replaceDocumentUpload(existingUploadId, uploadPayload);
+        } else {
+          await createDocumentUpload(uploadPayload);
+        }
 
         await logActivity({
           client_id:  clientId,
@@ -104,7 +117,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       }
     } else {
       try {
-        const upload = await createDocumentUpload({
+        const uploadPayload = {
           client_id:      clientId,
           requirement_id: documentId,
           file_name:      file.name,
@@ -115,7 +128,11 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           tax_year:       CURRENT_TAX_YEAR,
           is_prior_year:  false,
           uploaded_by:    session?.user?.id ?? null,
-        });
+        };
+
+        const upload = replaceMode && existingUploadId
+          ? await replaceDocumentUpload(existingUploadId, uploadPayload)
+          : await createDocumentUpload(uploadPayload);
 
         const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
           wrong_year: 'wrong-year',
@@ -194,7 +211,9 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           >
             <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
             <p className="text-sm text-gray-600 mb-2">
-              Drag and drop your {documentName} here, or click to browse
+              {replaceMode
+                ? `Replace your ${documentName} — upload a new file below`
+                : `Drag and drop your ${documentName} here, or click to browse`}
             </p>
             <input
               type="file"
@@ -204,7 +223,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
               accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
             />
             <Button variant="outline" size="sm" onClick={() => document.getElementById(`file-${documentId}`)?.click()}>
-              Browse Files
+              {replaceMode ? 'Replace File' : 'Browse Files'}
             </Button>
             <p className="text-xs text-gray-500 mt-2">Supported: PDF, JPG, PNG, DOC, DOCX</p>
           </div>

@@ -198,19 +198,19 @@ const ClientDashboard: React.FC = () => {
                         {submitted ? 'Verified' : doc.upload ? 'Issue' : 'Pending'}
                       </Badge>
                     </div>
-                    {!submitted && (
-                      <DocumentUpload
-                        documentId={doc.id}
-                        documentName={doc.name}
-                        docType={doc.doc_type}
-                        clientId={clientId}
-                        clientEmail={clientEmail}
-                        clientName={clientName}
-                        existingFilenames={existingFilenames}
-                        onUpload={handleUpload}
-                        onAnalysisComplete={refreshAnalysis}
-                      />
-                    )}
+                    <DocumentUpload
+                      documentId={doc.id}
+                      documentName={doc.name}
+                      docType={doc.doc_type}
+                      clientId={clientId}
+                      clientEmail={clientEmail}
+                      clientName={clientName}
+                      existingFilenames={existingFilenames.filter(n => n !== doc.upload?.file_name)}
+                      onUpload={handleUpload}
+                      onAnalysisComplete={refreshAnalysis}
+                      replaceMode={!!doc.upload}
+                      existingUploadId={doc.upload?.id}
+                    />
                   </div>
                 );
               })}
@@ -248,7 +248,9 @@ const ClientDashboard: React.FC = () => {
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
               <h3 className="text-lg font-medium">Ready to Submit?</h3>
-              <p className="text-muted-foreground">Once all documents are uploaded and verified, submit them for review by our team.</p>
+              <p className="text-muted-foreground">
+                Submit unlocks when every required document shows <strong>Verified</strong> (green). Documents with an Issue badge must be replaced first.
+              </p>
               <Button size="lg" disabled={!allDone} className="bg-green-600 hover:bg-green-700">
                 <Upload className="w-4 h-4 mr-2" />Submit for Review
               </Button>

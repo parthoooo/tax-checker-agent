@@ -192,6 +192,25 @@ Run `seed-demo-users` edge function once to create/reset these accounts and seed
 | `W2_2025_Employer.pdf` in W-2 slot | Verified |
 | `1099-NEC_2025.pdf` in W-2 slot | Wrong document type |
 
+### Sample test files (download and upload)
+After running the dev server or deploying, download these from `/sample-docs/`:
+
+| File | URL path | Use for |
+|------|----------|---------|
+| `W2_2025_Goldman.pdf` | `/sample-docs/W2_2025_Goldman.pdf` | Verified W-2 upload |
+| `W2_2024_Goldman.pdf` | `/sample-docs/W2_2024_Goldman.pdf` | Wrong year flag |
+| `1099-NEC_2025.pdf` | `/sample-docs/1099-NEC_2025.pdf` | Wrong type (upload to W-2 slot) |
+| `BankStatement_Jan2025.pdf` | `/sample-docs/BankStatement_Jan2025.pdf` | Unexpected document flag |
+| `1098_2025_WellsFargo.pdf` | `/sample-docs/1098_2025_WellsFargo.pdf` | Verified 1098 upload |
+| `ScheduleC_2025.pdf` | `/sample-docs/ScheduleC_2025.pdf` | Verified Schedule C upload |
+| `K1_2025_AlphaPartnership.pdf` | `/sample-docs/K1_2025_AlphaPartnership.pdf` | Verified K-1 upload (if on checklist) |
+
+Local: `http://localhost:8080/sample-docs/W2_2025_Goldman.pdf`  
+Production: `https://brodermansoor.buildyourai.consulting/sample-docs/W2_2025_Goldman.pdf`
+
+### Document replace
+Clients can **replace** an uploaded document after verification on both `/portal` and magic link `/upload/:token`. This was not restricted by PM — it is supported for corrections.
+
 ### End-to-end flow
 1. Sign in as test client → `/portal`
 2. Upload documents (or use magic link from Client Detail → Magic Links)

@@ -15,13 +15,14 @@ export async function uploadDocumentToStorage(
   clientId: string,
   docType: string,
   taxYear: number = CURRENT_TAX_YEAR_NUM,
+  upsert = true,
 ): Promise<{ success: boolean; storagePath?: string; error?: string }> {
   const safeName = file.name.replace(/\s+/g, '_');
   const path = `clients/${clientId}/${taxYear}/${docType}/${safeName}`;
 
   const { error } = await (supabase as any).storage
     .from('documents')
-    .upload(path, file, { upsert: false });
+    .upload(path, file, { upsert });
 
   if (error) {
     return { success: false, error: error.message };
