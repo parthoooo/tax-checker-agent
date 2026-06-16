@@ -106,11 +106,56 @@ export type Database = {
           },
         ]
       }
+      client_corrections: {
+        Row: {
+          client_id: string
+          comparison_snapshot: Json
+          id: string
+          resolved_at: string | null
+          sent_at: string
+          sent_by: string | null
+          staff_message: string | null
+          status: string
+          tax_year: string
+        }
+        Insert: {
+          client_id: string
+          comparison_snapshot: Json
+          id?: string
+          resolved_at?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          staff_message?: string | null
+          status?: string
+          tax_year?: string
+        }
+        Update: {
+          client_id?: string
+          comparison_snapshot?: Json
+          id?: string
+          resolved_at?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          staff_message?: string | null
+          status?: string
+          tax_year?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_corrections_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           assigned_preparer: string | null
           assigned_staff: string | null
           auth_user_id: string | null
+          business_type: string
           created_at: string
           documents_required: number
           documents_submitted: number
@@ -127,6 +172,7 @@ export type Database = {
           assigned_preparer?: string | null
           assigned_staff?: string | null
           auth_user_id?: string | null
+          business_type?: string
           created_at?: string
           documents_required?: number
           documents_submitted?: number
@@ -143,6 +189,7 @@ export type Database = {
           assigned_preparer?: string | null
           assigned_staff?: string | null
           auth_user_id?: string | null
+          business_type?: string
           created_at?: string
           documents_required?: number
           documents_submitted?: number
@@ -517,6 +564,7 @@ export type Database = {
         Returns: boolean
       }
       resolve_magic_link: { Args: { p_token: string }; Returns: Json }
+      submit_documents_via_token: { Args: { p_token: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never
