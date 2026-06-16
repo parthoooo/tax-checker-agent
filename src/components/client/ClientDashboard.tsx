@@ -13,11 +13,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import DocumentUpload from './DocumentUpload';
-import AnalysisSummary from './AnalysisSummary';
 import PendingAccessScreen from './PendingAccessScreen';
 import ClientActionRequired from './ClientActionRequired';
 import { fetchActiveClientCorrection } from '@/lib/clientCorrections';
-import type { ComparisonResult } from '@/lib/documentComparison';
 import { effectiveUploadAiStatus } from '@/lib/documentComparison';
 import { toast } from 'sonner';
 import {
@@ -35,7 +33,6 @@ import {
   setClientProfessionFromPortal,
   updateClientProfessionFromPortal,
 } from '@/lib/clientPortalSettings';
-import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
 import {
   BUSINESS_TYPE_LABELS,
   CURRENT_TAX_YEAR,
@@ -61,8 +58,6 @@ const ClientDashboard: React.FC = () => {
   const [clientName, setClientName] = useState<string>('');
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [clientRecord, setClientRecord] = useState<Client | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeCorrection, setActiveCorrection] = useState<Awaited<ReturnType<typeof fetchActiveClientCorrection>>>(null);
@@ -161,23 +156,8 @@ const ClientDashboard: React.FC = () => {
     return () => window.removeEventListener('focus', refreshOnFocus);
   }, [clientId, loadData, session?.user?.id]);
 
-  const refreshAnalysis = useCallback(async () => {
-    if (!clientId || !clientName || !clientEmail) return;
-    setAnalysisLoading(true);
-    try {
-      const result = await runDocumentAnalysis(clientId, clientName, clientEmail);
-      setAnalysisResult(result);
-      await loadData(selectedTaxYear);
-    } catch (err: any) {
-      toast.error('Analysis failed', { description: err?.message });
-    } finally {
-      setAnalysisLoading(false);
-    }
-  }, [clientId, clientName, clientEmail, loadData, selectedTaxYear]);
-
   const handleUpload = async () => {
     await loadData(selectedTaxYear);
-    await refreshAnalysis();
   };
 
   const handleConfirmProfession = async () => {
@@ -507,17 +487,6 @@ const ClientDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {selectedTaxYear === CURRENT_TAX_YEAR && (
-          <>
-            <div className="flex justify-end mb-4">
-              <Button variant="outline" onClick={refreshAnalysis} disabled={analysisLoading}>
-                {analysisLoading ? 'Analyzing…' : 'Run AI Analysis'}
-              </Button>
-            </div>
-            <AnalysisSummary result={analysisResult} loading={analysisLoading} />
-          </>
-        )}
-
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Required Documents — Tax Year {selectedTaxYear}</CardTitle>
@@ -568,7 +537,6 @@ const ClientDashboard: React.FC = () => {
                       clientName={clientName}
                       existingFilenames={existingFilenames.filter(n => n !== doc.upload?.file_name)}
                       onUpload={handleUpload}
-                      onAnalysisComplete={refreshAnalysis}
                       replaceMode={!!doc.upload}
                       existingUploadId={doc.upload?.id}
                       taxYear={selectedTaxYear}
