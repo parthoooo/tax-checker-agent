@@ -42,18 +42,50 @@ export function detectTaxYearFromFilename(fileName: string): string | null {
   return match ? match[0] : null;
 }
 
+/** Override stale edge-function wrong-year results using the portal's selected tax year. */
+export function reconcileAnalysisForTaxYear(
+  result: AnalyzeDocumentResult,
+  fileName: string,
+  expectedTaxYear: string,
+): AnalyzeDocumentResult {
+  const yearFromName = detectTaxYearFromFilename(fileName);
+
+  if (yearFromName && yearFromName !== expectedTaxYear) {
+    return {
+      ...result,
+      aiStatus: 'wrong_year',
+      taxYear: yearFromName,
+      aiMessage: `Tax year ${yearFromName} detected; ${expectedTaxYear} is required.`,
+      issues: [{ type: 'wrong-year', message: `Tax year ${yearFromName} detected; ${expectedTaxYear} is required.` }],
+    };
+  }
+
+  if (result.aiStatus === 'wrong_year' && (!yearFromName || yearFromName === expectedTaxYear)) {
+    return {
+      ...result,
+      aiStatus: 'verified',
+      taxYear: expectedTaxYear,
+      aiMessage: 'Document verified and stored.',
+      issues: result.issues.filter(i => i.type !== 'wrong-year'),
+    };
+  }
+
+  return result;
+}
+
 /** Mock analyzer — used client-side and mirrored in edge function. */
 export function analyzeDocumentMock(
   fileName: string,
   requirementDocType: string,
   existingFilenames: string[],
+  expectedTaxYear: string = CURRENT_TAX_YEAR,
 ): AnalyzeDocumentResult {
   const fn = fileName.toLowerCase();
   const detectedLabel = detectDocType(fileName);
   const detectedSlug = normalizeDocTypeSlug(detectedLabel);
   const expectedSlug = normalizeDocTypeSlug(requirementDocType);
   const yearFromName = detectTaxYearFromFilename(fileName);
-  const taxYear = yearFromName ?? CURRENT_TAX_YEAR;
+  const taxYear = yearFromName ?? expectedTaxYear;
   const issues: AnalyzeDocumentResult['issues'] = [];
 
   if (existingFilenames.some(n => n.toLowerCase() === fn)) {
@@ -68,10 +100,10 @@ export function analyzeDocumentMock(
     };
   }
 
-  if (yearFromName && yearFromName !== CURRENT_TAX_YEAR) {
+  if (yearFromName && yearFromName !== expectedTaxYear) {
     issues.push({
       type: 'wrong-year',
-      message: `Tax year ${yearFromName} detected; ${CURRENT_TAX_YEAR} is required.`,
+      message: `Tax year ${yearFromName} detected; ${expectedTaxYear} is required.`,
     });
   }
 
@@ -102,7 +134,7 @@ export function analyzeDocumentMock(
       confidence: 97,
       issues,
       aiStatus: 'wrong_year',
-      aiMessage: `This document appears to be from tax year ${yearFromName}. Tax year ${CURRENT_TAX_YEAR} is required — please re-upload the correct version.`,
+      aiMessage: `This document appears to be from tax year ${yearFromName}. Tax year ${expectedTaxYear} is required — please re-upload the correct version.`,
     };
   }
 
@@ -121,12 +153,31 @@ export function analyzeDocumentMock(
   return {
     docType: detectedLabel,
     docTypeSlug: detectedSlug,
-    taxYear: CURRENT_TAX_YEAR,
+    taxYear: expectedTaxYear,
     confidence: 96,
     issues: [],
     aiStatus: 'verified',
     aiMessage: 'Document verified and stored.',
   };
+}
+
+/** Treat prior wrong-year flags as verified when the file matches the selected tax year. */
+export function effectiveUploadAiStatus(
+  upload: DocUpload | undefined,
+  expectedTaxYear: string,
+): DocUpload['ai_status'] | 'pending' {
+  if (!upload) return 'pending';
+  if (upload.ai_status === 'verified') return 'verified';
+
+  const uploadYear = upload.tax_year ?? CURRENT_TAX_YEAR;
+  if (uploadYear !== expectedTaxYear) return upload.ai_status;
+
+  const yearFromName = detectTaxYearFromFilename(upload.file_name);
+  if (!yearFromName || yearFromName === expectedTaxYear) {
+    return 'verified';
+  }
+
+  return upload.ai_status;
 }
 
 export function compareDocuments(

@@ -13,15 +13,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import DocumentUpload from './DocumentUpload';
-import AnalysisSummary from './AnalysisSummary';
 import PendingAccessScreen from './PendingAccessScreen';
 import ClientActionRequired from './ClientActionRequired';
 import { fetchActiveClientCorrection } from '@/lib/clientCorrections';
-import type { ComparisonResult } from '@/lib/documentComparison';
+import { effectiveUploadAiStatus } from '@/lib/documentComparison';
 import { toast } from 'sonner';
 import {
   fetchClientByAuthUser,
-  fetchDocumentRequirements,
   fetchDocumentUploadsForYear,
   saveReminder,
   logActivity,
@@ -30,12 +28,11 @@ import {
 } from '@/lib/db';
 import {
   clientCanSelectTaxYear,
-  checklistMatchesProfession,
   isTaxYearUploadLocked,
+  resolveClientPortalRequirements,
   setClientProfessionFromPortal,
-  syncChecklistToProfession,
+  updateClientProfessionFromPortal,
 } from '@/lib/clientPortalSettings';
-import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
 import {
   BUSINESS_TYPE_LABELS,
   CURRENT_TAX_YEAR,
@@ -61,8 +58,6 @@ const ClientDashboard: React.FC = () => {
   const [clientName, setClientName] = useState<string>('');
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [clientRecord, setClientRecord] = useState<Client | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeCorrection, setActiveCorrection] = useState<Awaited<ReturnType<typeof fetchActiveClientCorrection>>>(null);
@@ -74,12 +69,19 @@ const ClientDashboard: React.FC = () => {
   const [savingProfession, setSavingProfession] = useState(false);
   const [yearSubmitted, setYearSubmitted] = useState(false);
   const loadRequestRef = useRef(0);
+  const selectedTaxYearRef = useRef(selectedTaxYear);
+
+  useEffect(() => {
+    selectedTaxYearRef.current = selectedTaxYear;
+  }, [selectedTaxYear]);
 
   const loadData = useCallback(async (taxYear: string) => {
     if (!session?.user?.id) return;
 
     const requestId = ++loadRequestRef.current;
-    const isStale = () => requestId !== loadRequestRef.current;
+    const isStale = () =>
+      requestId !== loadRequestRef.current
+      || taxYear !== selectedTaxYearRef.current;
 
     try {
       const client = await fetchClientByAuthUser(session.user.id);
@@ -98,19 +100,14 @@ const ClientDashboard: React.FC = () => {
       setYearLockReason(lock.reason);
 
       const businessType = (client.business_type ?? 'freelancer') as BusinessType;
-      let reqs = await fetchDocumentRequirements(client.id, taxYear);
-      if (isStale()) return;
+      const canLoadYear =
+        taxYear === CURRENT_TAX_YEAR
+        || (taxYear === PRIOR_TAX_YEAR && client.prior_year_upload_enabled);
 
-      if (
-        taxYear === PRIOR_TAX_YEAR
-        && client.prior_year_upload_enabled
-        && !checklistMatchesProfession(reqs, businessType)
-      ) {
-        reqs = await syncChecklistToProfession(client.id, taxYear, businessType, {
-          lockProfession: false,
-        });
-        if (isStale()) return;
-      }
+      const reqs = canLoadYear
+        ? await resolveClientPortalRequirements(client.id, taxYear, businessType)
+        : [];
+      if (isStale()) return;
 
       const [uploads, submitted] = await Promise.all([
         fetchDocumentUploadsForYear(client.id, taxYear),
@@ -149,23 +146,18 @@ const ClientDashboard: React.FC = () => {
     loadData(selectedTaxYear);
   }, [loadData, selectedTaxYear]);
 
-  const refreshAnalysis = useCallback(async () => {
-    if (!clientId || !clientName || !clientEmail) return;
-    setAnalysisLoading(true);
-    try {
-      const result = await runDocumentAnalysis(clientId, clientName, clientEmail);
-      setAnalysisResult(result);
-      await loadData(selectedTaxYear);
-    } catch (err: any) {
-      toast.error('Analysis failed', { description: err?.message });
-    } finally {
-      setAnalysisLoading(false);
-    }
-  }, [clientId, clientName, clientEmail, loadData, selectedTaxYear]);
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      if (clientId && session?.user?.id) {
+        loadData(selectedTaxYearRef.current);
+      }
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [clientId, loadData, session?.user?.id]);
 
   const handleUpload = async () => {
     await loadData(selectedTaxYear);
-    await refreshAnalysis();
   };
 
   const handleConfirmProfession = async () => {
@@ -176,8 +168,8 @@ const ClientDashboard: React.FC = () => {
       toast.success('Profession saved', {
         description: `Your ${CURRENT_TAX_YEAR} checklist is set for ${BUSINESS_TYPE_LABELS[pendingProfession]}.`,
       });
-      await loadData(CURRENT_TAX_YEAR);
       setSelectedTaxYear(CURRENT_TAX_YEAR);
+      await loadData(CURRENT_TAX_YEAR);
     } catch (err: any) {
       toast.error('Could not save profession', { description: err?.message });
     } finally {
@@ -185,8 +177,31 @@ const ClientDashboard: React.FC = () => {
     }
   };
 
+  const handleUpdateProfession = async () => {
+    if (!clientId || clientRecord?.profession_locked) return;
+    setSavingProfession(true);
+    try {
+      await updateClientProfessionFromPortal(clientId, pendingProfession);
+      toast.success('Profession updated', {
+        description: `Your checklists now match ${BUSINESS_TYPE_LABELS[pendingProfession]}.`,
+      });
+      const updated = await fetchClientByAuthUser(session!.user!.id);
+      if (updated) {
+        setClientRecord(updated);
+        setPendingProfession((updated.business_type ?? 'freelancer') as BusinessType);
+      }
+      await loadData(selectedTaxYear);
+    } catch (err: any) {
+      toast.error('Could not update profession', { description: err?.message });
+    } finally {
+      setSavingProfession(false);
+    }
+  };
+
   const uploadedCount  = docs.filter(d => d.required && d.upload).length;
-  const verifiedCount  = docs.filter(d => d.required && d.upload?.ai_status === 'verified').length;
+  const verifiedCount  = docs.filter(
+    d => d.required && effectiveUploadAiStatus(d.upload, selectedTaxYear) === 'verified',
+  ).length;
   const totalCount     = docs.filter(d => d.required).length;
   const progress       = totalCount > 0 ? (uploadedCount / totalCount) * 100 : 0;
   const allSlotsFilled = totalCount > 0 && uploadedCount === totalCount;
@@ -382,13 +397,40 @@ const ClientDashboard: React.FC = () => {
           <CardContent className="pt-6 flex flex-wrap items-end gap-4">
             <div className="space-y-2 min-w-[200px]">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Profession</p>
-              <Badge variant="secondary" className="text-sm py-1 px-3">
-                {BUSINESS_TYPE_LABELS[(clientRecord?.business_type ?? 'freelancer') as BusinessType]}
-              </Badge>
-              {clientRecord?.profession_locked && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Locked — contact preparer to change
-                </p>
+              {clientRecord?.profession_locked ? (
+                <>
+                  <Badge variant="secondary" className="text-sm py-1 px-3">
+                    {BUSINESS_TYPE_LABELS[(clientRecord?.business_type ?? 'freelancer') as BusinessType]}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Locked — contact preparer to change
+                  </p>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Select
+                    value={pendingProfession}
+                    onValueChange={v => setPendingProfession(v as BusinessType)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(BUSINESS_TYPE_LABELS) as BusinessType[]).map(key => (
+                        <SelectItem key={key} value={key}>{BUSINESS_TYPE_LABELS[key]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={savingProfession || pendingProfession === clientRecord?.business_type}
+                    onClick={handleUpdateProfession}
+                  >
+                    {savingProfession ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                    Save profession
+                  </Button>
+                </div>
               )}
             </div>
             <div className="space-y-2 min-w-[160px]">
@@ -445,17 +487,6 @@ const ClientDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {selectedTaxYear === CURRENT_TAX_YEAR && (
-          <>
-            <div className="flex justify-end mb-4">
-              <Button variant="outline" onClick={refreshAnalysis} disabled={analysisLoading}>
-                {analysisLoading ? 'Analyzing…' : 'Run AI Analysis'}
-              </Button>
-            </div>
-            <AnalysisSummary result={analysisResult} loading={analysisLoading} />
-          </>
-        )}
-
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Required Documents — Tax Year {selectedTaxYear}</CardTitle>
@@ -468,11 +499,16 @@ const ClientDashboard: React.FC = () => {
               <div className="flex justify-center py-10">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
               </div>
+            ) : docs.filter(d => d.required).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No documents are required for {selectedTaxYear} yet. Contact your preparer if you expected a checklist here.
+              </p>
             ) : (
             <div className="grid gap-4">
               {docs.filter(d => d.required).map((doc) => {
                 const hasUpload = !!doc.upload;
-                const verified = doc.upload?.ai_status === 'verified';
+                const displayStatus = effectiveUploadAiStatus(doc.upload, selectedTaxYear);
+                const verified = displayStatus === 'verified';
                 return (
                   <div key={doc.id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -492,6 +528,7 @@ const ClientDashboard: React.FC = () => {
                       </Badge>
                     </div>
                     <DocumentUpload
+                      key={`${doc.id}-${selectedTaxYear}`}
                       documentId={doc.id}
                       documentName={doc.name}
                       docType={doc.doc_type}
@@ -500,7 +537,6 @@ const ClientDashboard: React.FC = () => {
                       clientName={clientName}
                       existingFilenames={existingFilenames.filter(n => n !== doc.upload?.file_name)}
                       onUpload={handleUpload}
-                      onAnalysisComplete={refreshAnalysis}
                       replaceMode={!!doc.upload}
                       existingUploadId={doc.upload?.id}
                       taxYear={selectedTaxYear}

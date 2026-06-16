@@ -166,6 +166,14 @@ export async function updateClientBusinessType(
   taxYear = CURRENT_TAX_YEAR,
 ): Promise<Client> {
   await syncChecklistToProfession(clientId, taxYear, businessType, { lockProfession: true });
+
+  const client = await fetchClientById(clientId);
+  if (client?.prior_year_upload_enabled) {
+    await syncChecklistToProfession(clientId, PRIOR_TAX_YEAR, businessType, {
+      lockProfession: false,
+    });
+  }
+
   const { data, error } = await supabase
     .from('clients')
     .select('*')
