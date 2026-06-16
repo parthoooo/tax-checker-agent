@@ -8,6 +8,9 @@ import { CheckCircle, AlertCircle, Upload, LogOut, Mail, Loader2 } from 'lucide-
 import DocumentUpload from './DocumentUpload';
 import AnalysisSummary from './AnalysisSummary';
 import PendingAccessScreen from './PendingAccessScreen';
+import ClientActionRequired from './ClientActionRequired';
+import { fetchActiveClientCorrection } from '@/lib/clientCorrections';
+import type { ComparisonResult } from '@/lib/documentComparison';
 import { toast } from 'sonner';
 import {
   fetchClientByAuthUser,
@@ -17,12 +20,11 @@ import {
   logActivity,
   submitDocumentsForReview,
 } from '@/lib/db';
+import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
 
 type Client = Database['public']['Tables']['clients']['Row'];
-import { runDocumentAnalysis } from '@/lib/runDocumentAnalysis';
-import type { ComparisonResult } from '@/lib/documentComparison';
-import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
 type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
 type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
 
@@ -43,6 +45,7 @@ const ClientDashboard: React.FC = () => {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [clientRecord, setClientRecord] = useState<Client | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [activeCorrection, setActiveCorrection] = useState<Awaited<ReturnType<typeof fetchActiveClientCorrection>>>(null);
 
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -65,6 +68,8 @@ const ClientDashboard: React.FC = () => {
 
     const uploadsByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
     setDocs(reqs.map(r => ({ ...r, upload: uploadsByReqId.get(r.id) })));
+
+    fetchActiveClientCorrection(client.id).then(setActiveCorrection).catch(() => setActiveCorrection(null));
     setLoading(false);
   }, [session?.user?.id]);
 
@@ -206,6 +211,15 @@ const ClientDashboard: React.FC = () => {
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {activeCorrection && (
+          <ClientActionRequired
+            comparison={activeCorrection.comparison}
+            staffMessage={activeCorrection.staff_message}
+            sentAt={activeCorrection.sent_at}
+            sentBy={activeCorrection.sent_by}
+          />
+        )}
+
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

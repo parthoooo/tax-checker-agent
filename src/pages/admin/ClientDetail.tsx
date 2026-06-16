@@ -7,9 +7,26 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send, RotateCcw } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { statusBadge, initials } from '@/lib/mockData';
+import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send, RotateCcw, Eye, FolderOpen, Sparkles } from 'lucide-react';
 import ReminderModal from '@/components/common/ReminderModal';
 import InputSheet from '@/components/client/InputSheet';
+import AnalysisSummary from '@/components/client/AnalysisSummary';
 import TimeTracker from '@/components/client/TimeTracker';
 import MagicLinksPanel from '@/components/admin/MagicLinksPanel';
 import { toast } from 'sonner';
@@ -34,9 +51,20 @@ import {
   generateMagicToken,
   logActivity,
   resetClientDocuments,
+  getDocumentSignedUrl,
+  updateClientBusinessType,
+  seedPriorYearTestBaseline,
 } from '@/lib/db';
-import { statusBadge, initials } from '@/lib/mockData';
-import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
+import { getDocumentComparison } from '@/lib/getDocumentComparison';
+import { sendClientCorrection, resolveClientCorrection } from '@/lib/clientCorrections';
+import { useAuth } from '@/contexts/AuthContext';
+import type { ComparisonResult } from '@/lib/documentComparison';
+import {
+  BUSINESS_TYPE_LABELS,
+  CURRENT_TAX_YEAR,
+  PRIOR_TAX_YEAR,
+  type BusinessType,
+} from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
 
 type Client    = Database['public']['Tables']['clients']['Row'];
@@ -47,6 +75,7 @@ type Activity  = Database['public']['Tables']['activity_log']['Row'] & { clients
 
 const ClientDetail: React.FC = () => {
   const { id = '' } = useParams();
+  const { user } = useAuth();
   const [client, setClient] = useState<Client | null>(null);
   const [requirements, setRequirements] = useState<DocReq[]>([]);
   const [uploads, setUploads] = useState<DocUpload[]>([]);
@@ -58,6 +87,13 @@ const ClientDetail: React.FC = () => {
   const [generatingLink, setGeneratingLink] = useState(false);
   const [sentReqIds, setSentReqIds] = useState<Set<string>>(new Set());
   const [resetting, setResetting] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionMessage, setCorrectionMessage] = useState('');
+  const [sendingCorrection, setSendingCorrection] = useState(false);
+  const [seedingBaseline, setSeedingBaseline] = useState(false);
+  const [savingBusinessType, setSavingBusinessType] = useState(false);
 
   const reloadClientData = async () => {
     const [c, reqs, ups, allFlags, allActivity] = await Promise.all([
@@ -100,13 +136,98 @@ const ClientDetail: React.FC = () => {
     try {
       await resolveAiFlag(flagId);
       if (client) {
-        await logActivity({ client_id: client.id, actor: 'Staff', actor_type: 'staff', action: 'Resolved AI flag' });
+        await logActivity({ client_id: client.id, actor: user?.name ?? 'Staff', actor_type: 'staff', action: 'Resolved AI flag' });
       }
       setFlags(prev => prev.filter(f => f.id !== flagId));
       toast.success('Flag resolved');
     } catch {
       toast.error('Failed to resolve flag');
     }
+  };
+
+  const handleRunAiReview = async () => {
+    if (!client) return;
+    setAnalysisLoading(true);
+    try {
+      setAnalysisResult(await getDocumentComparison(client.id));
+    } catch (err: any) {
+      toast.error('AI review failed', { description: err?.message });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleSendCorrection = async () => {
+    if (!client || !analysisResult) return;
+    setSendingCorrection(true);
+    try {
+      await sendClientCorrection(client.id, {
+        clientName: client.name,
+        clientEmail: client.email,
+        comparison: analysisResult,
+        staffMessage: correctionMessage,
+        sentByName: user?.name ?? 'Staff',
+        preparerName: client.assigned_preparer ?? 'Your Tax Preparer',
+      });
+      setCorrectionOpen(false);
+      setCorrectionMessage('');
+      toast.success('Correction checklist sent', {
+        description: 'Client will see it on their portal. Email draft added to Outbox.',
+      });
+    } catch (err: any) {
+      toast.error('Failed to send correction', { description: err?.message });
+    } finally {
+      setSendingCorrection(false);
+    }
+  };
+
+  const handleClearCorrection = async () => {
+    if (!client) return;
+    try {
+      await resolveClientCorrection(client.id);
+      toast.success('Correction cleared from client portal');
+    } catch (err: any) {
+      toast.error('Failed to clear correction', { description: err?.message });
+    }
+  };
+
+  const handleSeedPriorBaseline = async () => {
+    if (!client) return;
+    setSeedingBaseline(true);
+    try {
+      const businessType = (client.business_type ?? 'freelancer') as BusinessType;
+      await seedPriorYearTestBaseline(client.id, businessType);
+      await reloadClientData();
+      toast.success(`${PRIOR_TAX_YEAR} test baseline created`, {
+        description: `Verified placeholder uploads for ${BUSINESS_TYPE_LABELS[businessType]} template.`,
+      });
+    } catch (err: any) {
+      toast.error('Baseline setup failed', { description: err?.message });
+    } finally {
+      setSeedingBaseline(false);
+    }
+  };
+
+  const handleBusinessTypeChange = async (value: BusinessType) => {
+    if (!client) return;
+    setSavingBusinessType(true);
+    try {
+      const updated = await updateClientBusinessType(client.id, value);
+      setClient(updated);
+      toast.success('Business type updated', {
+        description: 'Use "Set up 2024 test baseline" for new test clients without prior-year history.',
+      });
+    } catch (err: any) {
+      toast.error('Update failed', { description: err?.message });
+    } finally {
+      setSavingBusinessType(false);
+    }
+  };
+
+  const handlePreviewFile = async (storagePath: string) => {
+    const url = await getDocumentSignedUrl(storagePath);
+    if (url) window.open(url, '_blank');
+    else toast.error('Preview unavailable — file may not be in storage yet.');
   };
 
   const handleResetDocuments = async () => {
@@ -227,7 +348,48 @@ const ClientDetail: React.FC = () => {
           </TabsList>
 
           {/* Document Checklist */}
-          <TabsContent value="docs">
+          <TabsContent value="docs" className="space-y-4">
+            <Card>
+              <CardContent className="pt-6 flex flex-wrap items-end gap-4">
+                <div className="space-y-2 min-w-[220px]">
+                  <Label>Business / profession</Label>
+                  <Select
+                    value={(client.business_type ?? 'freelancer') as BusinessType}
+                    onValueChange={(v) => handleBusinessTypeChange(v as BusinessType)}
+                    disabled={savingBusinessType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(BUSINESS_TYPE_LABELS) as BusinessType[]).map(key => (
+                        <SelectItem key={key} value={key}>{BUSINESS_TYPE_LABELS[key]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="outline" onClick={handleSeedPriorBaseline} disabled={seedingBaseline}>
+                  {seedingBaseline ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                  Set up {PRIOR_TAX_YEAR} test baseline
+                </Button>
+                <Button variant="outline" onClick={handleRunAiReview} disabled={analysisLoading}>
+                  {analysisLoading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+                  Run AI Review
+                </Button>
+                <Button
+                  onClick={() => setCorrectionOpen(true)}
+                  disabled={!analysisResult || analysisLoading}
+                >
+                  <Send className="w-4 h-4 mr-1" /> Send correction to client
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleClearCorrection}>
+                  Clear client checklist
+                </Button>
+              </CardContent>
+            </Card>
+
+            <AnalysisSummary result={analysisResult} loading={analysisLoading} />
+
             <div className="flex justify-end mb-3">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -268,6 +430,7 @@ const ClientDetail: React.FC = () => {
                       <th className="py-3 px-4">AI Result</th>
                       <th className="py-3 px-4">File Name</th>
                       <th className="py-3 px-4">Uploaded</th>
+                      <th className="py-3 px-4">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -302,12 +465,26 @@ const ClientDetail: React.FC = () => {
                           <td className="py-3 px-4 text-gray-500 text-xs">
                             {upload ? new Date(upload.uploaded_at).toLocaleDateString() : '—'}
                           </td>
+                          <td className="py-3 px-4">
+                            {upload?.storage_path ? (
+                              <div className="flex gap-1">
+                                <Button size="sm" variant="outline" onClick={() => handlePreviewFile(upload.storage_path)}>
+                                  <Eye className="w-3.5 h-3.5 mr-1" /> Preview
+                                </Button>
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link to={`/vault?client=${client.id}`}>
+                                    <FolderOpen className="w-3.5 h-3.5 mr-1" /> Vault
+                                  </Link>
+                                </Button>
+                              </div>
+                            ) : '—'}
+                          </td>
                         </tr>
                       );
                     })}
                     {docRows.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-gray-400">No document requirements set.</td>
+                        <td colSpan={7} className="text-center py-8 text-gray-400">No document requirements set.</td>
                       </tr>
                     )}
                   </tbody>
@@ -413,6 +590,34 @@ const ClientDetail: React.FC = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Send correction checklist to client</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This posts the AI review checklist to the client&apos;s portal and creates an Outbox email draft for you to approve and send.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="correction-note">Optional note to client</Label>
+            <Textarea
+              id="correction-note"
+              rows={3}
+              placeholder="e.g. Please re-upload your Schedule C for 2025 — the file looks like a 1099."
+              value={correctionMessage}
+              onChange={e => setCorrectionMessage(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCorrectionOpen(false)}>Cancel</Button>
+            <Button onClick={handleSendCorrection} disabled={sendingCorrection}>
+              {sendingCorrection ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+              Send to client portal + Outbox
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ReminderModal
         open={reminderOpen}
