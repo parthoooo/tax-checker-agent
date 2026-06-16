@@ -563,7 +563,40 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _client_id_for_auth_user: { Args: never; Returns: string }
       _magic_link_client_id: { Args: { p_token: string }; Returns: string }
+      _portal_requirements_json: {
+        Args: {
+          p_business_type: string
+          p_client_id: string
+          p_tax_year: string
+        }
+        Returns: Json
+      }
+      _profession_template_rows: {
+        Args: { p_business_type: string }
+        Returns: {
+          doc_type: string
+          name: string
+        }[]
+      }
+      _sync_checklist_to_profession: {
+        Args: {
+          p_business_type: string
+          p_client_id: string
+          p_lock_profession?: boolean
+          p_tax_year: string
+        }
+        Returns: undefined
+      }
+      client_ensure_portal_checklist: {
+        Args: { p_tax_year: string }
+        Returns: Json
+      }
+      client_update_profession: {
+        Args: { p_business_type: string; p_lock_profession?: boolean }
+        Returns: Json
+      }
       is_admin: { Args: never; Returns: boolean }
       is_staff: { Args: never; Returns: boolean }
       magic_link_create_email_draft: {
