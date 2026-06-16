@@ -196,9 +196,11 @@ export type Database = {
           file_name: string
           file_size: number | null
           id: string
+          is_prior_year: boolean
           mime_type: string | null
           requirement_id: string | null
           storage_path: string
+          tax_year: string
           uploaded_at: string
           uploaded_by: string | null
         }
@@ -208,9 +210,11 @@ export type Database = {
           file_name: string
           file_size?: number | null
           id?: string
+          is_prior_year?: boolean
           mime_type?: string | null
           requirement_id?: string | null
           storage_path: string
+          tax_year?: string
           uploaded_at?: string
           uploaded_by?: string | null
         }
@@ -220,9 +224,11 @@ export type Database = {
           file_name?: string
           file_size?: number | null
           id?: string
+          is_prior_year?: boolean
           mime_type?: string | null
           requirement_id?: string | null
           storage_path?: string
+          tax_year?: string
           uploaded_at?: string
           uploaded_by?: string | null
         }
