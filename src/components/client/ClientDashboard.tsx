@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -72,53 +72,75 @@ const ClientDashboard: React.FC = () => {
   const [pendingProfession, setPendingProfession] = useState<BusinessType>('freelancer');
   const [savingProfession, setSavingProfession] = useState(false);
   const [yearSubmitted, setYearSubmitted] = useState(false);
+  const loadRequestRef = useRef(0);
 
-  const loadData = useCallback(async (taxYear = selectedTaxYear) => {
+  const loadData = useCallback(async (taxYear: string) => {
     if (!session?.user?.id) return;
 
-    const client = await fetchClientByAuthUser(session.user.id);
-    if (!client) {
-      setLoading(false);
-      return;
-    }
+    const requestId = ++loadRequestRef.current;
+    const isStale = () => requestId !== loadRequestRef.current;
 
-    setClientId(client.id);
-    setClientEmail(client.email);
-    setClientName(client.name);
-    setClientRecord(client);
-    setPendingProfession((client.business_type ?? 'freelancer') as BusinessType);
+    try {
+      const client = await fetchClientByAuthUser(session.user.id);
+      if (isStale()) return;
+      if (!client) return;
 
-    const lock = await isTaxYearUploadLocked(client.id, taxYear);
-    setYearLocked(lock.locked);
-    setYearLockReason(lock.reason);
+      setClientId(client.id);
+      setClientEmail(client.email);
+      setClientName(client.name);
+      setClientRecord(client);
+      setPendingProfession((client.business_type ?? 'freelancer') as BusinessType);
 
-    let reqs = await fetchDocumentRequirements(client.id, taxYear);
-    if (
-      reqs.length === 0
-      && taxYear === PRIOR_TAX_YEAR
-      && client.prior_year_upload_enabled
-    ) {
+      const lock = await isTaxYearUploadLocked(client.id, taxYear);
+      if (isStale()) return;
+      setYearLocked(lock.locked);
+      setYearLockReason(lock.reason);
+
       const businessType = (client.business_type ?? 'freelancer') as BusinessType;
-      reqs = await syncChecklistToProfession(client.id, taxYear, businessType, {
-        lockProfession: false,
-      });
+      let reqs = await fetchDocumentRequirements(client.id, taxYear);
+      if (isStale()) return;
+
+      if (taxYear === PRIOR_TAX_YEAR && client.prior_year_upload_enabled) {
+        reqs = await syncChecklistToProfession(client.id, taxYear, businessType, {
+          lockProfession: false,
+        });
+        if (isStale()) return;
+      }
+
+      const [uploads, submitted] = await Promise.all([
+        fetchDocumentUploadsForYear(client.id, taxYear),
+        hasClientSubmittedTaxYear(client.id, taxYear),
+      ]);
+      if (isStale()) return;
+
+      setYearSubmitted(submitted);
+      const uploadsByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
+      setDocs(reqs.map(r => ({ ...r, upload: uploadsByReqId.get(r.id) })));
+
+      fetchActiveClientCorrection(client.id)
+        .then(correction => {
+          if (!isStale()) setActiveCorrection(correction);
+        })
+        .catch(() => {
+          if (!isStale()) setActiveCorrection(null);
+        });
+    } catch (err: unknown) {
+      if (!isStale()) {
+        const message = err instanceof Error ? err.message : 'Please try again.';
+        toast.error('Could not load documents', { description: message });
+        setDocs([]);
+      }
+    } finally {
+      if (!isStale()) setLoading(false);
     }
-
-    const [uploads, submitted] = await Promise.all([
-      fetchDocumentUploadsForYear(client.id, taxYear),
-      hasClientSubmittedTaxYear(client.id, taxYear),
-    ]);
-    setYearSubmitted(submitted);
-
-    const uploadsByReqId = new Map(uploads.map(u => [u.requirement_id, u]));
-    setDocs(reqs.map(r => ({ ...r, upload: uploadsByReqId.get(r.id) })));
-
-    fetchActiveClientCorrection(client.id).then(setActiveCorrection).catch(() => setActiveCorrection(null));
-    setLoading(false);
-  }, [session?.user?.id, selectedTaxYear]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     setLoading(true);
+    setDocs([]);
+    setYearSubmitted(false);
+    setYearLocked(false);
+    setYearLockReason(undefined);
     loadData(selectedTaxYear);
   }, [loadData, selectedTaxYear]);
 
@@ -175,7 +197,12 @@ const ClientDashboard: React.FC = () => {
   );
 
   const hasChecklist = docs.some(d => d.required);
-  const needsProfessionSetup = clientRecord && !clientRecord.profession_locked && !hasChecklist;
+  const needsProfessionSetup =
+    !loading
+    && clientRecord
+    && !clientRecord.profession_locked
+    && !hasChecklist
+    && selectedTaxYear === CURRENT_TAX_YEAR;
 
   const handleSubmitForReview = async () => {
     if (!clientId || !allSlotsFilled || submitting || alreadySubmitted) return;
@@ -215,6 +242,16 @@ const ClientDashboard: React.FC = () => {
     }
   };
 
+  const handleTaxYearChange = (year: string) => {
+    loadRequestRef.current += 1;
+    setDocs([]);
+    setYearSubmitted(false);
+    setYearLocked(false);
+    setYearLockReason(undefined);
+    setLoading(true);
+    setSelectedTaxYear(year);
+  };
+
   const sendSelfReminder = async () => {
     if (!clientId) return;
     try {
@@ -230,7 +267,7 @@ const ClientDashboard: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !clientId) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -355,7 +392,7 @@ const ClientDashboard: React.FC = () => {
             </div>
             <div className="space-y-2 min-w-[160px]">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tax year</p>
-              <Select value={selectedTaxYear} onValueChange={setSelectedTaxYear}>
+              <Select value={selectedTaxYear} onValueChange={handleTaxYearChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -420,6 +457,11 @@ const ClientDashboard: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              </div>
+            ) : (
             <div className="grid gap-4">
               {docs.filter(d => d.required).map((doc) => {
                 const hasUpload = !!doc.upload;
@@ -461,6 +503,7 @@ const ClientDashboard: React.FC = () => {
                 );
               })}
             </div>
+            )}
           </CardContent>
         </Card>
 

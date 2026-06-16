@@ -122,8 +122,10 @@ export async function syncChecklistToProfession(
 
   const updates: Record<string, unknown> = {
     business_type: businessType,
-    documents_required: template.length,
   };
+  if (taxYear === CURRENT_TAX_YEAR) {
+    updates.documents_required = template.length;
+  }
   if (options.lockProfession) {
     updates.profession_locked = true;
   }
