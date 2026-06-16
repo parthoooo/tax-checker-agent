@@ -51,6 +51,64 @@ export async function fetchClientByAuthUser(authUserId: string): Promise<Client 
   return data;
 }
 
+/** Admin/preparer inbox for client submission notifications (demo). */
+export const PREPARER_NOTIFY_EMAIL = 'nick@brodermansoor.com';
+
+export async function submitDocumentsForReview(
+  clientId: string,
+  params: {
+    clientName: string;
+    clientEmail: string;
+    actorName: string;
+    verifiedCount: number;
+    requiredCount: number;
+    documentNames: string[];
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  const { error: clientErr } = await supabase
+    .from('clients')
+    .update({
+      documents_submitted: params.verifiedCount,
+      documents_required: params.requiredCount,
+      status: 'complete',
+      issues: 0,
+      last_activity: now,
+    })
+    .eq('id', clientId);
+  if (clientErr) throw clientErr;
+
+  await logActivity({
+    client_id: clientId,
+    actor: params.actorName,
+    actor_type: 'client',
+    action: `Submitted all ${CURRENT_TAX_YEAR} documents for preparer review`,
+  });
+
+  const docList = params.documentNames.map(n => `• ${n}`).join('\n');
+  await createEmailDraft({
+    client_id: clientId,
+    to_email: PREPARER_NOTIFY_EMAIL,
+    from_label: params.clientName,
+    subject: `${params.clientName} submitted ${CURRENT_TAX_YEAR} tax documents`,
+    body: [
+      'Hi team,',
+      '',
+      `${params.clientName} (${params.clientEmail}) submitted their ${CURRENT_TAX_YEAR} tax document package for review.`,
+      '',
+      'Verified documents:',
+      docList,
+      '',
+      'Please review in the client portal.',
+      '',
+      '— Broder Mansoor Portal',
+    ].join('\n'),
+    status: 'pending',
+    type: 'outbox',
+  });
+}
+
 // ── Document Requirements ──────────────────────────────────────────────────
 
 export async function fetchDocumentRequirements(
