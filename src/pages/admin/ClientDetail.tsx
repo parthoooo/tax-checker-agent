@@ -7,24 +7,36 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send } from 'lucide-react';
+import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send, RotateCcw } from 'lucide-react';
 import ReminderModal from '@/components/common/ReminderModal';
 import InputSheet from '@/components/client/InputSheet';
 import TimeTracker from '@/components/client/TimeTracker';
 import MagicLinksPanel from '@/components/admin/MagicLinksPanel';
 import { toast } from 'sonner';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   fetchClientById,
   fetchDocumentRequirements,
   fetchDocumentUploads,
   fetchAiFlags,
   fetchActivityLog,
-  fetchEmailDrafts,
   resolveAiFlag,
   generateMagicToken,
   logActivity,
+  resetClientDocuments,
 } from '@/lib/db';
 import { statusBadge, initials } from '@/lib/mockData';
+import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
 
 type Client    = Database['public']['Tables']['clients']['Row'];
@@ -45,22 +57,28 @@ const ClientDetail: React.FC = () => {
   const [note, setNote] = useState('');
   const [generatingLink, setGeneratingLink] = useState(false);
   const [sentReqIds, setSentReqIds] = useState<Set<string>>(new Set());
+  const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
-    if (!id) return;
-    Promise.all([
+  const reloadClientData = async () => {
+    const [c, reqs, ups, allFlags, allActivity] = await Promise.all([
       fetchClientById(id),
       fetchDocumentRequirements(id),
       fetchDocumentUploads(id),
       fetchAiFlags(false),
       fetchActivityLog(),
-    ]).then(([c, reqs, ups, allFlags, allActivity]) => {
-      setClient(c);
-      setRequirements(reqs);
-      setUploads(ups);
-      setFlags(allFlags.filter(f => f.client_id === id));
-      setActivity(allActivity.filter(a => a.client_id === id));
-    }).catch(() => toast.error('Failed to load client')).finally(() => setLoading(false));
+    ]);
+    setClient(c);
+    setRequirements(reqs);
+    setUploads(ups);
+    setFlags(allFlags.filter(f => f.client_id === id));
+    setActivity(allActivity.filter(a => a.client_id === id));
+  };
+
+  useEffect(() => {
+    if (!id) return;
+    reloadClientData()
+      .catch(() => toast.error('Failed to load client'))
+      .finally(() => setLoading(false));
   }, [id]);
 
   const handleCopyPortalLink = async () => {
@@ -88,6 +106,28 @@ const ClientDetail: React.FC = () => {
       toast.success('Flag resolved');
     } catch {
       toast.error('Failed to resolve flag');
+    }
+  };
+
+  const handleResetDocuments = async () => {
+    if (!client) return;
+    setResetting(true);
+    try {
+      await resetClientDocuments(client.id);
+      await logActivity({
+        client_id: client.id,
+        actor: 'Staff',
+        actor_type: 'staff',
+        action: 'Reset all current-year document uploads (admin)',
+      });
+      await reloadClientData();
+      toast.success('Documents reset', {
+        description: `${client.name}'s ${CURRENT_TAX_YEAR} checklist is empty and ready for fresh uploads.`,
+      });
+    } catch (err: any) {
+      toast.error('Reset failed', { description: err?.message ?? 'Please try again.' });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -188,6 +228,35 @@ const ClientDetail: React.FC = () => {
 
           {/* Document Checklist */}
           <TabsContent value="docs">
+            <div className="flex justify-end mb-3">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={resetting} className="text-red-700 border-red-200 hover:bg-red-50">
+                    {resetting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+                    Reset {CURRENT_TAX_YEAR} Documents
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset client documents?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This removes all {CURRENT_TAX_YEAR} uploads, AI flags, and pending email drafts for{' '}
+                      <strong>{client.name}</strong>. Storage files are deleted and a fresh empty checklist is created.
+                      The client account, magic links, and {PRIOR_TAX_YEAR} baseline are kept.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleResetDocuments}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      Reset documents
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
             <Card>
               <CardContent className="p-0 overflow-x-auto">
                 <table className="w-full text-sm">

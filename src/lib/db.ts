@@ -65,14 +65,18 @@ export async function fetchDocumentRequirements(
     .order('created_at');
   if (error) throw error;
   if ((data ?? []).length > 0) return data ?? [];
-  // Pre-sync DB may only have 2024 rows — show them so portal isn't empty
+  // Pre-sync DB may only have 2024 rows — seed current-year checklist instead of showing prior-year rows
   if (taxYear === CURRENT_TAX_YEAR) {
-    const { data: legacy } = await supabase
-      .from('document_requirements')
-      .select('*')
-      .eq('client_id', clientId)
-      .order('created_at');
-    return legacy ?? [];
+    try {
+      return await seedDefaultRequirements(clientId, CURRENT_TAX_YEAR);
+    } catch {
+      const { data: legacy } = await supabase
+        .from('document_requirements')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at');
+      return (legacy ?? []).filter(r => r.tax_year !== PRIOR_TAX_YEAR);
+    }
   }
   return [];
 }
@@ -233,6 +237,30 @@ export async function createDocumentUpload(
   return insertDocumentUploadRow(payload);
 }
 
+export async function replaceDocumentUpload(
+  uploadId: string,
+  payload: Omit<Database['public']['Tables']['document_uploads']['Insert'], 'client_id' | 'requirement_id'>,
+): Promise<DocUpload> {
+  const { data, error } = await supabase
+    .from('document_uploads')
+    .update({
+      file_name: payload.file_name,
+      storage_path: payload.storage_path,
+      file_size: payload.file_size,
+      mime_type: payload.mime_type,
+      ai_status: payload.ai_status,
+      tax_year: payload.tax_year,
+      is_prior_year: payload.is_prior_year ?? false,
+      uploaded_by: payload.uploaded_by ?? null,
+      uploaded_at: new Date().toISOString(),
+    })
+    .eq('id', uploadId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function updateUploadAiStatus(
   uploadId: string,
   aiStatus: DocUpload['ai_status']
@@ -242,6 +270,100 @@ export async function updateUploadAiStatus(
     .update({ ai_status: aiStatus })
     .eq('id', uploadId);
   if (error) throw error;
+}
+
+/** Admin: wipe current-year uploads, flags, drafts; re-seed empty checklist. Keeps client + magic links + prior-year baseline. */
+export async function resetClientDocuments(clientId: string): Promise<DocReq[]> {
+  const { data: allUploads, error: fetchErr } = await supabase
+    .from('document_uploads')
+    .select('id, storage_path, tax_year, is_prior_year')
+    .eq('client_id', clientId);
+  if (fetchErr) throw fetchErr;
+
+  const currentUploads = (allUploads ?? []).filter((u: DocUpload) => {
+    if (u.is_prior_year === true) return false;
+    if (u.tax_year === PRIOR_TAX_YEAR) return false;
+    if (u.tax_year === CURRENT_TAX_YEAR) return true;
+    // Legacy rows: treat as current unless path is clearly prior-year
+    return !new RegExp(`/${PRIOR_TAX_YEAR}/`).test(u.storage_path ?? '');
+  });
+
+  const storagePaths = [
+    ...new Set(
+      currentUploads
+        .map((u: DocUpload) => u.storage_path)
+        .filter((p): p is string => Boolean(p)),
+    ),
+  ];
+
+  if (storagePaths.length > 0) {
+    const { error: storageErr } = await supabase.storage.from('documents').remove(storagePaths);
+    if (storageErr) {
+      // Best-effort: also try listing the current-year folder
+      const prefix = `clients/${clientId}/${CURRENT_TAX_YEAR}`;
+      const { data: listed } = await supabase.storage.from('documents').list(prefix, { limit: 200 });
+      if (listed?.length) {
+        await supabase.storage
+          .from('documents')
+          .remove(listed.map((f: { name: string }) => `${prefix}/${f.name}`));
+      }
+    }
+  }
+
+  const deletes = await Promise.all([
+    supabase.from('document_uploads').delete().eq('client_id', clientId).eq('tax_year', CURRENT_TAX_YEAR),
+    supabase.from('document_requirements').delete().eq('client_id', clientId).eq('tax_year', CURRENT_TAX_YEAR),
+    supabase.from('ai_flags').delete().eq('client_id', clientId),
+    supabase.from('email_drafts').delete().eq('client_id', clientId),
+    supabase.from('input_sheet_entries').delete().eq('client_id', clientId).eq('tax_year', CURRENT_TAX_YEAR),
+  ]);
+
+  // Fallback when tax_year column is missing on uploads/requirements
+  const uploadDelErr = deletes[0].error;
+  if (uploadDelErr && (uploadDelErr.message ?? '').toLowerCase().includes('tax_year')) {
+    const ids = currentUploads.map((u: DocUpload) => u.id);
+    if (ids.length > 0) {
+      const { error } = await supabase.from('document_uploads').delete().in('id', ids);
+      if (error) throw error;
+    }
+  } else if (uploadDelErr) {
+    throw uploadDelErr;
+  }
+
+  const reqDelErr = deletes[1].error;
+  if (reqDelErr && (reqDelErr.message ?? '').toLowerCase().includes('tax_year')) {
+    const { data: reqs } = await supabase
+      .from('document_requirements')
+      .select('id, tax_year')
+      .eq('client_id', clientId);
+    const currentReqIds = (reqs ?? [])
+      .filter((r: DocReq) => r.tax_year !== PRIOR_TAX_YEAR)
+      .map((r: DocReq) => r.id);
+    if (currentReqIds.length > 0) {
+      const { error } = await supabase.from('document_requirements').delete().in('id', currentReqIds);
+      if (error) throw error;
+    }
+  } else if (reqDelErr) {
+    throw reqDelErr;
+  }
+
+  for (const { error } of deletes.slice(2)) {
+    if (error && !(error.message ?? '').toLowerCase().includes('input_sheet')) throw error;
+  }
+
+  const requirements = await seedDefaultRequirements(clientId, CURRENT_TAX_YEAR);
+
+  await supabase
+    .from('clients')
+    .update({
+      documents_submitted: 0,
+      issues: 0,
+      documents_required: requirements.length,
+      last_activity: new Date().toISOString(),
+    })
+    .eq('id', clientId);
+
+  return requirements;
 }
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -353,10 +475,17 @@ export async function fetchEmailDrafts(
   if (type === 'reminder') {
     query = query.eq('type', 'reminder');
   } else if (type === 'outbox') {
-    // Include both explicit 'outbox' and legacy rows where type is null
     query = query.or('type.eq.outbox,type.is.null');
   }
-  const { data, error } = await query;
+  let { data, error } = await query;
+  if (error && type && (error.message ?? '').toLowerCase().includes('type')) {
+    let fallback = supabase
+      .from('email_drafts')
+      .select('*, clients(name, email)')
+      .order('created_at', { ascending: false });
+    if (status) fallback = fallback.eq('status', status);
+    ({ data, error } = await fallback);
+  }
   if (error) throw error;
   return (data ?? []) as any;
 }
@@ -369,8 +498,20 @@ export async function createEmailDraft(
     .insert(payload)
     .select()
     .single();
-  if (error) throw error;
-  return data;
+  if (!error) return data;
+
+  const msg = (error.message ?? '').toLowerCase();
+  if (msg.includes('type') || msg.includes('column')) {
+    const { type: _t, ...legacy } = payload as Record<string, unknown>;
+    const { data: d2, error: e2 } = await supabase
+      .from('email_drafts')
+      .insert(legacy)
+      .select()
+      .single();
+    if (e2) throw e2;
+    return d2;
+  }
+  throw error;
 }
 
 export async function approveEmailDraft(id: string, approvedBy: string): Promise<void> {
@@ -398,11 +539,17 @@ export async function updateEmailDraftBody(id: string, body: string, subject: st
 }
 
 export async function countPendingEmailDrafts(): Promise<number> {
-  const { count, error } = await supabase
+  let { count, error } = await supabase
     .from('email_drafts')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'pending')
     .or('type.eq.outbox,type.is.null');
+  if (error && (error.message ?? '').toLowerCase().includes('type')) {
+    ({ count, error } = await supabase
+      .from('email_drafts')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending'));
+  }
   if (error) return 0;
   return count ?? 0;
 }

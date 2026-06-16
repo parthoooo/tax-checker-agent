@@ -8,11 +8,10 @@ import {
   CheckCircle2, AlertCircle, Clock, Upload, FileText, Loader2, XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { resolveMagicLink } from '@/lib/magicLinkDb';
 import {
-  fetchClientByToken,
-  fetchDocumentRequirements,
-  fetchDocumentUploads,
   createDocumentUpload,
+  replaceDocumentUpload,
   createAiFlag,
   createEmailDraft,
   logActivity,
@@ -63,20 +62,15 @@ const MagicLinkPortal: React.FC = () => {
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
-    fetchClientByToken(token).then(c => {
-      if (!c) { setTokenExpired(true); setLoading(false); return; }
-      if (new Date(c.token_expires_at) < new Date()) { setTokenExpired(true); setLoading(false); return; }
-      setClient(c);
-      return Promise.all([
-        fetchDocumentRequirements(c.id),
-        fetchDocumentUploads(c.id),
-      ]).then(([reqs, uploads]) => {
-        const merged: ReqWithUpload[] = reqs.map(req => {
-          const up = uploads.find(u => u.requirement_id === req.id);
-          return { ...req, upload: up };
-        });
-        setRequirements(merged);
-      });
+    resolveMagicLink(token).then(result => {
+      if (result === null) { setTokenExpired(true); setLoading(false); return; }
+      if (result === 'expired') { setTokenExpired(true); setLoading(false); return; }
+      setClient(result.client);
+      const uploadsByReq = new Map(result.uploads.map(u => [u.requirement_id, u]));
+      setRequirements(result.requirements.map(req => ({
+        ...req,
+        upload: uploadsByReq.get(req.id),
+      })));
     }).catch(() => setTokenExpired(true)).finally(() => setLoading(false));
   }, [token]);
 
@@ -109,12 +103,14 @@ const MagicLinkPortal: React.FC = () => {
     let storagePath = `clients/${client.id}/${CURRENT_TAX_YEAR}/${req.doc_type}/${file.name.replace(/\s+/g, '_')}`;
 
     if (analysis.aiStatus === 'verified') {
-      const stored = await uploadDocumentToStorage(file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM);
+      const stored = await uploadDocumentToStorage(
+        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, !!req.upload,
+      );
       if (stored.storagePath) storagePath = stored.storagePath;
     }
 
     try {
-      const upload = await createDocumentUpload({
+      const uploadPayload = {
         client_id: client.id,
         requirement_id: req.id,
         file_name: file.name,
@@ -125,7 +121,11 @@ const MagicLinkPortal: React.FC = () => {
         tax_year: CURRENT_TAX_YEAR,
         is_prior_year: false,
         uploaded_by: null,
-      });
+      };
+
+      const upload = req.upload
+        ? await replaceDocumentUpload(req.upload.id, uploadPayload)
+        : await createDocumentUpload(uploadPayload);
 
       if (analysis.aiStatus !== 'verified') {
         const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
