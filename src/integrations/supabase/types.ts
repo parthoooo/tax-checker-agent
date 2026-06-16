@@ -165,8 +165,11 @@ export type Database = {
           last_activity: string
           name: string
           phone: string | null
+          prior_year_upload_enabled: boolean
+          profession_locked: boolean
           reminder_cadence_days: number
           status: string
+          year_upload_unlocks: string[]
         }
         Insert: {
           assigned_preparer?: string | null
@@ -182,8 +185,11 @@ export type Database = {
           last_activity?: string
           name: string
           phone?: string | null
+          prior_year_upload_enabled?: boolean
+          profession_locked?: boolean
           reminder_cadence_days?: number
           status?: string
+          year_upload_unlocks?: string[]
         }
         Update: {
           assigned_preparer?: string | null
@@ -199,8 +205,11 @@ export type Database = {
           last_activity?: string
           name?: string
           phone?: string | null
+          prior_year_upload_enabled?: boolean
+          profession_locked?: boolean
           reminder_cadence_days?: number
           status?: string
+          year_upload_unlocks?: string[]
         }
         Relationships: []
       }
