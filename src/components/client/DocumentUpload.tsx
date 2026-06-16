@@ -124,7 +124,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           storage_path:   storagePath,
           file_size:      file.size,
           mime_type:      file.type || null,
-          ai_status:      aiDbStatus,
+          ai_status:      aiDbStatus as 'verified' | 'flagged',
           tax_year:       CURRENT_TAX_YEAR,
           is_prior_year:  false,
           uploaded_by:    session?.user?.id ?? null,
