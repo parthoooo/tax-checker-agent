@@ -1,9 +1,6 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import SignupApprovals from "./pages/admin/SignupApprovals";
 import NotFound from "./pages/NotFound";
@@ -25,16 +22,12 @@ import MagicLinkPortal from "./pages/MagicLinkPortal";
 import ESignaturePage from "./pages/ESignaturePage";
 import SigningPage from "./pages/SigningPage";
 
-const queryClient = new QueryClient();
-
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
+  <>
+    <Toaster />
+    <Sonner />
+    <BrowserRouter>
+      <Routes>
             {/* Public routes */}
             <Route path="/" element={<Index />} />
             <Route path="/upload/:token" element={<MagicLinkPortal />} />
@@ -75,10 +68,8 @@ const App = () => (
 
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
+    </BrowserRouter>
+  </>
 );
 
 export default App;
