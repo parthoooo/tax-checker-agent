@@ -1,4 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { isAdminUser } from "../_shared/authRoles.ts";
+import { authUserUpdateForRole } from "../_shared/setUserAuthRole.ts";
+import type { AppRole } from "../_shared/authRoles.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,7 +118,7 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user: callerUser }, error: callerErr } = await caller.auth.getUser();
-    if (callerErr || !callerUser || callerUser.user_metadata?.role !== "admin") {
+    if (callerErr || !callerUser || !isAdminUser(callerUser)) {
       return new Response(JSON.stringify({ error: "Admin access required" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -162,11 +165,10 @@ Deno.serve(async (req) => {
 
     if (action === "reject") {
       await admin.auth.admin.updateUserById(signup.auth_user_id, {
-        user_metadata: {
+        ...authUserUpdateForRole("client", {
           full_name: signup.full_name,
-          role: "client",
           approval_status: "rejected",
-        },
+        }),
       });
       await admin.from("signup_requests").update({
         status: "rejected",
@@ -201,12 +203,11 @@ Deno.serve(async (req) => {
     }
 
     await admin.auth.admin.updateUserById(signup.auth_user_id, {
-      user_metadata: {
+      ...authUserUpdateForRole(approvedRole as AppRole, {
         full_name: signup.full_name,
-        role: approvedRole,
         approval_status: "approved",
         client_id: clientId,
-      },
+      }),
     });
 
     await admin.from("signup_requests").update({

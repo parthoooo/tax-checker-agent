@@ -57,17 +57,23 @@ function authProviderLabel(su: SupabaseUser): string {
   return identity?.provider ?? 'email';
 }
 
+function staffRoleFromAuth(su: SupabaseUser): UserRole | null {
+  const appRole = su.app_metadata?.role as string | undefined;
+  if (appRole === 'admin' || appRole === 'preparer') return appRole;
+  return null;
+}
+
 async function resolveAppUser(su: SupabaseUser): Promise<User> {
   const meta = su.user_metadata ?? {};
   const name = meta.full_name ?? meta.name ?? su.email ?? 'User';
-  const rawRole = meta.role as string | undefined;
+  const staffRole = staffRoleFromAuth(su);
 
-  if (rawRole === 'admin' || rawRole === 'preparer') {
+  if (staffRole) {
     return {
       id: su.id,
       email: su.email ?? '',
       name,
-      role: rawRole,
+      role: staffRole,
       approvalStatus: 'approved',
     };
   }
@@ -86,7 +92,7 @@ async function resolveAppUser(su: SupabaseUser): Promise<User> {
 
   let signup = await fetchSignupRequestByAuthUser(su.id).catch(() => null);
 
-  if (!signup && rawRole !== 'admin' && rawRole !== 'preparer') {
+  if (!signup && !staffRole) {
     try {
       signup = await upsertSignupRequest({
         auth_user_id: su.id,
@@ -202,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email,
       password,
       options: {
-        data: { full_name: fullName, role: 'client', approval_status: 'pending' },
+        data: { full_name: fullName, approval_status: 'pending' },
       },
     });
     if (error) {
