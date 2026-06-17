@@ -165,7 +165,6 @@ export type Database = {
           last_activity: string
           name: string
           phone: string | null
-          portal_enabled_years: string[]
           prior_year_upload_enabled: boolean
           profession_locked: boolean
           reminder_cadence_days: number
@@ -186,7 +185,6 @@ export type Database = {
           last_activity?: string
           name: string
           phone?: string | null
-          portal_enabled_years?: string[]
           prior_year_upload_enabled?: boolean
           profession_locked?: boolean
           reminder_cadence_days?: number
@@ -207,7 +205,6 @@ export type Database = {
           last_activity?: string
           name?: string
           phone?: string | null
-          portal_enabled_years?: string[]
           prior_year_upload_enabled?: boolean
           profession_locked?: boolean
           reminder_cadence_days?: number
