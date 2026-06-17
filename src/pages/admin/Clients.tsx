@@ -8,12 +8,22 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import { Mail, Plus, Search, Loader2, UserCheck } from 'lucide-react';
+import { Mail, Plus, Search, Loader2, UserCheck, Trash2 } from 'lucide-react';
 import { initials, statusBadge } from '@/lib/mockData';
 import ReminderModal from '@/components/common/ReminderModal';
 import { toast } from 'sonner';
-import { fetchClients } from '@/lib/db';
+import { deleteClientCompletely, fetchClients } from '@/lib/db';
 import { countPendingSignupRequests } from '@/lib/signupRequests';
 import { supabase } from '@/lib/supabase';
 import { seedAllDemoData } from '@/lib/seedDemoData';
@@ -37,6 +47,7 @@ const Clients: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newStaff, setNewStaff] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchClients()
@@ -86,6 +97,21 @@ const Clients: React.FC = () => {
       setNewName(''); setNewEmail(''); setNewPhone(''); setNewStaff('');
     } catch (err: any) {
       toast.error('Failed to add client', { description: err?.message });
+    }
+  };
+
+  const handleDeleteClient = async (client: Client) => {
+    setDeletingId(client.id);
+    try {
+      await deleteClientCompletely(client.id);
+      setClients(prev => prev.filter(c => c.id !== client.id));
+      toast.success('Client deleted', {
+        description: `${client.name} and all related data were removed.`,
+      });
+    } catch (err: any) {
+      toast.error('Delete failed', { description: err?.message });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -153,6 +179,7 @@ const Clients: React.FC = () => {
                     <th className="py-3 px-4">Assigned</th>
                     <th className="py-3 px-4">Last Activity</th>
                     <th className="py-3 px-4">Actions</th>
+                    <th className="py-3 px-4 w-[80px]">Delete</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -195,11 +222,59 @@ const Clients: React.FC = () => {
                             </Button>
                           </div>
                         </td>
+                        <td className="py-3 px-4">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                disabled={deletingId === c.id}
+                              >
+                                {deletingId === c.id
+                                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                                  : <Trash2 className="w-4 h-4" />}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete {c.name}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This permanently removes the client, all documents, checklists, AI flags,
+                                  activity, magic links, and storage files. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel disabled={deletingId === c.id}>Cancel</AlertDialogCancel>
+                                <Button
+                                  variant="destructive"
+                                  onClick={() => handleDeleteClient(c)}
+                                  disabled={deletingId === c.id}
+                                >
+                                  Delete
+                                </Button>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </td>
                       </tr>
                     );
                   })}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">No clients match your filters.</td></tr>
+                    <tr>
+                      <td colSpan={8} className="text-center py-10 text-gray-500">
+                        {clients.length === 0 ? (
+                          <div className="space-y-2">
+                            <p>No clients in the database yet.</p>
+                            <p className="text-sm text-gray-400">
+                              Click <strong>Load Demo Data</strong> above to seed 20 demo clients, or add one manually.
+                            </p>
+                          </div>
+                        ) : (
+                          'No clients match your filters.'
+                        )}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

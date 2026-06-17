@@ -20,20 +20,19 @@ Living document of all features currently shipped in this app. Update this file 
 
 ## Client Dashboard (`/portal`)
 - Loads the logged-in client via `clients.auth_user_id`
-- **Tax year 2025** checklist from `document_requirements` (W-2, 1099-NEC, 1098, Schedule C, etc.) with progress tracking
-- Drag-and-drop document upload writing to Supabase Storage (`documents` bucket) + `document_uploads` (with `tax_year`, `is_prior_year`)
-- AI analysis via `analyze-document` edge function (mock filename classifier; Claude fallback when `ANTHROPIC_API_KEY` set)
-- **Analysis Summary** card — compares 2025 uploads vs 2024 prior-year baseline (missing, wrong year, wrong type, verified)
-- **Run AI Analysis** button triggers full comparison + follow-up email draft to Outbox
-- Failed validations create `ai_flags`, draft emails into `email_drafts`, and append to `activity_log`
+- **Tax year 2025 / 2024** checklist from `document_requirements` (W-2, 1099-NEC, 1098, Schedule C, etc.) with progress tracking
+- **Deferred upload:** client selects a file per checklist slot locally; nothing is stored until **Submit for Review**
+- On submit: batch upload to Supabase Storage (`documents` bucket) + `document_uploads` with `ai_status: pending` (no client-visible AI validation)
+- Slot badges: Pending / Selected / Submitted (neutral — no Verified/Flagged on client UI)
+- Preparer-driven **Action Required** card when admin sends a correction checklist (`client_corrections`)
 - "Still Missing" alert with self-reminder trigger (logged to `reminders` + `activity_log`)
 - Sonner toast feedback
 
 ## Magic Link Upload Portal (`/upload/:token`)
 - Public, tokenized upload page — **equal priority** with authenticated `/portal`
 - Resolves client by upload token; shows an expired-token state when invalid
-- Same 2025 checklist + upload + AI validation + Analysis Summary as the client dashboard
-- Failed validations create `ai_flags`, draft a client email into `email_drafts`, and append to `activity_log`
+- Same deferred select-then-submit flow as `/portal` — no client-visible AI validation or Analysis Summary
+- On submit: batch upload via `persistClientDocumentPackage` + `submit_documents_via_token` RPC
 
 ## Admin Dashboard (`/dashboard`, admin + preparer)
 - Animated ROI hero banner (14.5 hours / $406 saved)
@@ -186,9 +185,11 @@ Run `seed-demo-users` edge function once to create/reset these accounts and seed
 
 **Create Account** (email sign-up) requires a strong password (12+ chars, mixed case, number, symbol). Supabase rejects common passwords like `password123`. Example: `MyTax-Firm-2026!`
 
-### Demo filenames to trigger AI flags
-| Filename | Expected result |
-|----------|-----------------|
+### Demo filenames to trigger AI flags (admin testing only)
+Use these after a client submits — run **Run AI Review** on Client Detail as staff. Clients see no AI errors during upload.
+
+| Filename | Expected result (admin review) |
+|----------|-------------------------------|
 | `W2_2024_JohnSmith.pdf` | Wrong year (2024 detected, 2025 required) |
 | `BankStatement_Jan2025.pdf` | Unexpected document |
 | Same filename uploaded twice | Duplicate |
@@ -212,10 +213,11 @@ Local: `http://localhost:8080/sample-docs/W2_2025_Goldman.pdf`
 Production: `https://brodermansoor.buildyourai.consulting/sample-docs/W2_2025_Goldman.pdf`
 
 ### Document replace
-Clients can **replace** an uploaded document after verification on both `/portal` and magic link `/upload/:token`. This was not restricted by PM — it is supported for corrections.
+After submit, clients cannot change files unless the preparer unlocks the tax year. Before submit, clients can clear and re-select files per slot.
 
 ### End-to-end flow
 1. Sign in as test client → `/portal`
-2. Upload documents (or use magic link from Client Detail → Magic Links)
-3. Click **Run AI Analysis** — see Analysis Summary + pending draft in `/email-queue`
-4. Staff reviews flags at `/flags` and approves email in Outbox
+2. Select a file for each required checklist slot (any filename accepted — no client-side AI)
+3. Click **Submit for Review** — files upload to storage and preparer is notified
+4. Staff opens Client Detail → **Run AI Review** → **Send Correction Checklist** if needed
+5. Client sees preparer correction on portal; staff approves email in Outbox

@@ -57,9 +57,23 @@ function authProviderLabel(su: SupabaseUser): string {
   return identity?.provider ?? 'email';
 }
 
+const DEMO_STAFF_BY_EMAIL: Record<string, UserRole> = {
+  'nick@brodermansoor.com': 'admin',
+  'shawn@brodermansoor.com': 'preparer',
+  'girik@brodermansoor.com': 'preparer',
+};
+
 function staffRoleFromAuth(su: SupabaseUser): UserRole | null {
   const appRole = su.app_metadata?.role as string | undefined;
   if (appRole === 'admin' || appRole === 'preparer') return appRole;
+
+  // Legacy fallback when app_metadata backfill has not run on Lovable Cloud yet.
+  const legacyRole = su.user_metadata?.role as string | undefined;
+  if (legacyRole === 'admin' || legacyRole === 'preparer') return legacyRole;
+
+  const email = su.email?.toLowerCase();
+  if (email && DEMO_STAFF_BY_EMAIL[email]) return DEMO_STAFF_BY_EMAIL[email];
+
   return null;
 }
 
@@ -153,17 +167,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   const applySession = useCallback(async (newSession: Session | null) => {
-    setSession(newSession);
     if (!newSession) {
+      setSession(null);
       setUser(null);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      const resolved = await resolveAppUser(newSession.user);
+      let sessionToUse = newSession;
+      const email = newSession.user.email?.toLowerCase() ?? '';
+      const demoStaffRole = email ? DEMO_STAFF_BY_EMAIL[email] : undefined;
+      const appRole = newSession.user.app_metadata?.role as string | undefined;
+
+      if (demoStaffRole && appRole !== demoStaffRole) {
+        try {
+          await supabase.functions.invoke('ensure-demo-staff-role');
+          const { data: refreshed } = await supabase.auth.refreshSession();
+          if (refreshed.session) sessionToUse = refreshed.session;
+        } catch {
+          // Edge function may not be deployed yet; RLS demo fallback migration covers reads.
+        }
+      }
+
+      setSession(sessionToUse);
+      const resolved = await resolveAppUser(sessionToUse.user);
       setUser(resolved);
     } catch {
+      setSession(newSession);
       setUser({
         id: newSession.user.id,
         email: newSession.user.email ?? '',

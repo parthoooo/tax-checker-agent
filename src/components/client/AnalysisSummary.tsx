@@ -15,7 +15,7 @@ const AnalysisSummary: React.FC<Props> = ({ result, loading }) => {
     return (
       <Card className="mb-8 border-blue-200">
         <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          Running AI analysis against your {PRIOR_TAX_YEAR} documents…
+          Running AI review — comparing {CURRENT_TAX_YEAR} uploads against {PRIOR_TAX_YEAR} baseline…
         </CardContent>
       </Card>
     );
