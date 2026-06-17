@@ -62,9 +62,11 @@ import {
 import { runAdminAiReview } from '@/lib/getDocumentComparison';
 import { sendClientCorrection, resolveClientCorrection } from '@/lib/clientCorrections';
 import {
-  setPriorYearUploadEnabled,
+  enablePortalTaxYear,
+  disablePortalTaxYear,
   allowClientReupload,
   unlockClientProfession,
+  isPortalTaxYearEnabled,
 } from '@/lib/clientPortalSettings';
 import { useAuth } from '@/contexts/AuthContext';
 import type { ComparisonResult } from '@/lib/documentComparison';
@@ -72,6 +74,8 @@ import {
   BUSINESS_TYPE_LABELS,
   CURRENT_TAX_YEAR,
   PRIOR_TAX_YEAR,
+  getAdminSelectablePriorYears,
+  getEnabledPriorYears,
   type BusinessType,
 } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
@@ -116,6 +120,9 @@ const ClientDetail: React.FC = () => {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [portalYearPick, setPortalYearPick] = useState(
+    () => getAdminSelectablePriorYears()[0] ?? PRIOR_TAX_YEAR,
+  );
 
   const reloadClientData = async (options?: { keepAnalysis?: boolean }) => {
     const [c, reqs, ups, allFlags, allActivity] = await Promise.all([
@@ -132,10 +139,15 @@ const ClientDetail: React.FC = () => {
     setActivity(allActivity.filter(a => a.client_id === id));
     if (!options?.keepAnalysis) setAnalysisResult(null);
 
-    const years: string[] = [];
-    if (await hasClientSubmittedTaxYear(id, CURRENT_TAX_YEAR)) years.push(CURRENT_TAX_YEAR);
-    if (await hasClientSubmittedTaxYear(id, PRIOR_TAX_YEAR)) years.push(PRIOR_TAX_YEAR);
-    setSubmittedYears(years);
+    const enabledYears = c ? getEnabledPriorYears(c) : [];
+    const candidateYears = [CURRENT_TAX_YEAR, ...enabledYears];
+    const submittedChecks = await Promise.all(
+      candidateYears.map(async y => ({
+        year: y,
+        submitted: await hasClientSubmittedTaxYear(id, y),
+      })),
+    );
+    setSubmittedYears(submittedChecks.filter(x => x.submitted).map(x => x.year));
   };
 
   useEffect(() => {
@@ -230,9 +242,9 @@ const ClientDetail: React.FC = () => {
     setSeedingBaseline(true);
     try {
       const businessType = (client.business_type ?? 'freelancer') as BusinessType;
-      await seedPriorYearTestBaseline(client.id, businessType);
+      await seedPriorYearTestBaseline(client.id, businessType, portalYearPick);
       await reloadClientData();
-      toast.success(`${PRIOR_TAX_YEAR} test baseline created`, {
+      toast.success(`${portalYearPick} test baseline created`, {
         description: 'Admin-only YoY comparison seeds (not client uploads). Client portal is unchanged.',
       });
     } catch (err: any) {
@@ -258,14 +270,27 @@ const ClientDetail: React.FC = () => {
     }
   };
 
-  const handleTogglePriorYear = async () => {
+  const handleEnablePortalYear = async () => {
     if (!client) return;
     setPortalSaving(true);
     try {
-      const next = !client.prior_year_upload_enabled;
-      await setPriorYearUploadEnabled(client.id, next);
+      await enablePortalTaxYear(client.id, portalYearPick);
       await reloadClientData();
-      toast.success(next ? `${PRIOR_TAX_YEAR} uploads enabled on portal` : `${PRIOR_TAX_YEAR} uploads disabled`);
+      toast.success(`${portalYearPick} enabled on client portal`);
+    } catch (err: any) {
+      toast.error('Update failed', { description: err?.message });
+    } finally {
+      setPortalSaving(false);
+    }
+  };
+
+  const handleDisablePortalYear = async (year: string) => {
+    if (!client) return;
+    setPortalSaving(true);
+    try {
+      await disablePortalTaxYear(client.id, year);
+      await reloadClientData();
+      toast.success(`${year} disabled on client portal`);
     } catch (err: any) {
       toast.error('Update failed', { description: err?.message });
     } finally {
@@ -559,18 +584,55 @@ const ClientDetail: React.FC = () => {
                     <Label className="invisible select-none" aria-hidden>Baseline</Label>
                     <Button variant="outline" onClick={handleSeedPriorBaseline} disabled={seedingBaseline}>
                       {seedingBaseline ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
-                      Set up {PRIOR_TAX_YEAR} test baseline
+                      Set up {portalYearPick} test baseline
                     </Button>
                   </div>
                 </div>
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <p>Updates the client portal checklist and locks profession on the client side.</p>
-                  <p>Seeds verified placeholder {PRIOR_TAX_YEAR} files for YoY AI comparison only — clients do not upload here.</p>
+                  <p>Seeds verified placeholder files for YoY AI comparison only — clients do not upload here. YoY review compares {CURRENT_TAX_YEAR} vs {PRIOR_TAX_YEAR}.</p>
                 </div>
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-2 min-w-[140px]">
+                    <Label>Tax year</Label>
+                    <Select value={portalYearPick} onValueChange={setPortalYearPick}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getAdminSelectablePriorYears().map(year => (
+                          <SelectItem key={year} value={year}>{year}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleEnablePortalYear}
+                    disabled={portalSaving || isPortalTaxYearEnabled(client, portalYearPick)}
+                  >
+                    Enable on client portal
+                  </Button>
+                </div>
+                {getEnabledPriorYears(client).length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Enabled for client:</span>
+                    {getEnabledPriorYears(client).map(year => (
+                      <Badge key={year} variant="secondary" className="gap-2 py-1">
+                        {year}
+                        <button
+                          type="button"
+                          className="text-xs underline hover:no-underline disabled:opacity-50"
+                          onClick={() => handleDisablePortalYear(year)}
+                          disabled={portalSaving}
+                        >
+                          Disable
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-4">
-                <Button variant="outline" onClick={handleTogglePriorYear} disabled={portalSaving}>
-                  {client.prior_year_upload_enabled ? `Disable ${PRIOR_TAX_YEAR} on portal` : `Enable ${PRIOR_TAX_YEAR} on portal`}
-                </Button>
                 {reuploadLockedYears.map(year => (
                   <Button
                     key={year}

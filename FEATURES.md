@@ -20,7 +20,8 @@ Living document of all features currently shipped in this app. Update this file 
 
 ## Client Dashboard (`/portal`)
 - Loads the logged-in client via `clients.auth_user_id`
-- **Tax year 2025 / 2024** checklist from `document_requirements` (W-2, 1099-NEC, 1098, Schedule C, etc.) with progress tracking
+- **Tax year dropdown:** current filing year (2025) always available; admin-enabled prior years (up to 30 back) appear when enabled on Client Detail
+- Per-year checklist from `document_requirements` (W-2, 1099-NEC, 1098, Schedule C, etc.) with progress tracking
 - **Deferred upload:** client selects a file per checklist slot locally; nothing is stored until **Submit for Review**
 - On submit: batch upload to Supabase Storage (`documents` bucket) + `document_uploads` with `ai_status: pending` (no client-visible AI validation)
 - Slot badges: Pending / Selected / Submitted (neutral — no Verified/Flagged on client UI)
@@ -47,7 +48,7 @@ Living document of all features currently shipped in this app. Update this file 
 ## Clients
 - `/clients` (admin only) — searchable client list with status filter tabs, progress bars, AI issue counts, assigned staff, relative last activity, View + Remind actions, "Add Client" modal
 - `/clients/:id` (admin + preparer) — client detail page with header (status, staff, Send Reminder, Back) and tabs:
-  - Document Checklist
+  - Document Checklist — profession picker, **multi-year portal controls** (admin picks a prior year and **Enable on client portal**; enabled years shown as chips with Disable), per-year re-upload unlock, YoY test baseline seed, Run AI Review
   - AI Flags
   - Activity Log
   - Internal Notes (save toast, pre-existing note)
@@ -213,7 +214,7 @@ Local: `http://localhost:8080/sample-docs/W2_2025_Goldman.pdf`
 Production: `https://brodermansoor.buildyourai.consulting/sample-docs/W2_2025_Goldman.pdf`
 
 ### Document replace
-After submit, clients cannot change files unless the preparer unlocks the tax year. Before submit, clients can clear and re-select files per slot.
+After submit, clients cannot change files unless the preparer unlocks the tax year. Before submit, clients can clear and re-select files per slot. Admins enable prior tax years individually on Client Detail (stored in `clients.portal_enabled_years`); YoY AI review still compares **2025 vs 2024** only.
 
 ### End-to-end flow
 1. Sign in as test client → `/portal`

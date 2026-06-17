@@ -36,7 +36,7 @@ import {
 import {
   BUSINESS_TYPE_LABELS,
   CURRENT_TAX_YEAR,
-  PRIOR_TAX_YEAR,
+  getClientPortalTaxYears,
   type BusinessType,
 } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
@@ -108,9 +108,7 @@ const ClientDashboard: React.FC = () => {
       setYearLocked(lock.locked);
       setYearLockReason(lock.reason);
 
-      const canLoadYear =
-        taxYear === CURRENT_TAX_YEAR
-        || (taxYear === PRIOR_TAX_YEAR && client.prior_year_upload_enabled);
+      const canLoadYear = clientCanSelectTaxYear(clientForState, taxYear);
 
       const reqs = options?.requirements !== undefined
         ? options.requirements
@@ -247,9 +245,9 @@ const ClientDashboard: React.FC = () => {
     ? []
     : requiredDocs.filter(d => !pendingFiles[d.id]).map(d => `${d.tax_year} ${d.name}`);
 
-  const availableYears = [CURRENT_TAX_YEAR, PRIOR_TAX_YEAR].filter(
-    y => clientRecord && clientCanSelectTaxYear(clientRecord, y),
-  );
+  const availableYears = clientRecord
+    ? getClientPortalTaxYears(clientRecord).filter(y => clientCanSelectTaxYear(clientRecord, y))
+    : [CURRENT_TAX_YEAR];
 
   const hasChecklist = docs.some(d => d.required);
   const needsProfessionSetup =
