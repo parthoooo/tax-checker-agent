@@ -1,0 +1,82 @@
+---
+description: HARD STOP — no git commit/push/PR/merge without explicit user approval; never push main
+alwaysApply: true
+---
+
+# Git & GitHub — HARD STOP (Partho)
+
+**This rule overrides urgency, bug fixes, production errors, and implied permission.**
+
+The AI agent (Cursor) **must not** run any git write or remote command unless the user's **current message** contains explicit approval using the exact patterns below.
+
+---
+
+## ⛔ FORBIDDEN without explicit approval in the same user message
+
+| Action | Examples |
+|--------|----------|
+| Commit | `git commit`, `git add` + commit |
+| Push | `git push`, `git push -u origin …`, push after fix |
+| PR | `gh pr create`, `gh pr merge` |
+| Merge to main | merge, cherry-pick onto `main` |
+| Destructive git | force push, hard reset, rebase (unless user explicitly requests) |
+
+**Never push to `main` or `master`** unless the user message literally contains **`push to main`** or **`push main`**.
+
+Phrases that do **NOT** count as approval:
+- "fix it and push" (branch unspecified — ask first)
+- "push after fix" (branch unspecified — ask first)
+- "ship it" / "deploy" / "merge" (ask first)
+- "production is broken" / "urgent" (fix locally, then ask)
+- Prior message approval from an earlier turn (must re-confirm if unclear)
+
+Phrases that **DO** count as approval (only for what they name):
+- "commit on branch X" / "yes commit"
+- "push branch X" / "push to origin feature/…"
+- "push to main" (only then may push `main`)
+- "open the PR" / "create PR"
+
+---
+
+## ✅ Allowed without asking
+
+- Edit files locally (working tree only)
+- Read-only: `git status`, `git diff`, `git log`, `git branch`, `git show`
+- **Propose** commands and wait — do not run write commands
+
+---
+
+## Mandatory agent checklist BEFORE any `git commit` or `git push`
+
+Stop and answer these internally. If any answer is "no", **do not run the command**.
+
+1. Did the user's **latest message** explicitly approve this exact action?
+2. Is the target branch named? (Never assume `main`.)
+3. For push: is it `main`? If yes, does the message literally say push to main?
+4. Am I rushing because of a bug? (Still ask — urgency is not approval.)
+5. Have I shown the diff / summary and waited?
+
+**Default when in doubt: do not commit, do not push, ask.**
+
+---
+
+## Required workflow
+
+1. Finish code changes locally.
+2. Show summary + proposed branch, commit message, push target.
+3. **Wait** for explicit approval.
+4. Only then run git write commands on the **named branch only**.
+
+---
+
+## Branch policy
+
+- Feature/fix branches + PR into `main` — default.
+- **Direct push to `main` is forbidden** unless user explicitly says "push to main" in that message.
+- Lovable may commit to the repo separately — that is not permission for the agent to push.
+
+---
+
+## If `.githooks/pre-push` is installed
+
+Local pushes to `main`/`master` are blocked by hook unless `ALLOW_MAIN_PUSH=1` is set. The agent must **never** set that env var unless the user explicitly approved pushing to main.

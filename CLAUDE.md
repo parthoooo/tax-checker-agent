@@ -1,4 +1,16 @@
 
+## Git — HARD STOP (read first)
+
+**Partho: never `git commit`, `git push`, or open/merge PRs without explicit approval in the user's current message.**
+
+- Never push to `main` unless the user literally says **"push to main"**.
+- "fix and push" / "push after fix" → ask which branch; not approval.
+- Urgency does not override this.
+
+See `.cursor/rules/git-never-push-without-approval.mdc`, `AGENTS.md`, `GIT_WORKFLOW.md`.
+
+---
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
