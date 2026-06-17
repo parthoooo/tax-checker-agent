@@ -5,6 +5,7 @@ import {
   CURRENT_TAX_YEAR,
   PRIOR_TAX_YEAR,
   DEFAULT_CLIENT_REQUIREMENTS,
+  getEnabledPriorYears,
   getRequirementsForBusinessType,
   type BusinessType,
   type DefaultRequirement,
@@ -177,8 +178,8 @@ export async function updateClientBusinessType(
   await syncChecklistToProfession(clientId, taxYear, businessType, { lockProfession: true });
 
   const client = await fetchClientById(clientId);
-  if (client?.prior_year_upload_enabled) {
-    await syncChecklistToProfession(clientId, PRIOR_TAX_YEAR, businessType, {
+  for (const year of getEnabledPriorYears(client ?? { portal_enabled_years: [], prior_year_upload_enabled: false })) {
+    await syncChecklistToProfession(clientId, year, businessType, {
       lockProfession: false,
     });
   }
@@ -233,14 +234,65 @@ export async function applyChecklistTemplate(
 export async function seedPriorYearTestBaseline(
   clientId: string,
   businessType: BusinessType = 'freelancer',
+  taxYear: string = PRIOR_TAX_YEAR,
 ): Promise<void> {
   const template = getRequirementsForBusinessType(businessType);
-  const existing = await fetchDocumentRequirements(clientId, PRIOR_TAX_YEAR);
+  const existing = await fetchDocumentRequirements(clientId, taxYear);
   if (existing.length > 0) {
-    throw new Error(`${PRIOR_TAX_YEAR} baseline already exists. Reset documents first if you need a fresh baseline.`);
+    throw new Error(`${taxYear} baseline already exists. Reset documents first if you need a fresh baseline.`);
   }
 
-  await seedPriorYearBaseline(clientId, template);
+  await seedYearBaseline(clientId, taxYear, template);
+}
+
+/** @deprecated Use seedYearBaseline */
+export async function seedPriorYearBaseline(
+  clientId: string,
+  requirements: DefaultRequirement[] = DEFAULT_CLIENT_REQUIREMENTS,
+): Promise<void> {
+  await seedYearBaseline(clientId, PRIOR_TAX_YEAR, requirements);
+}
+
+export async function seedYearBaseline(
+  clientId: string,
+  taxYear: string,
+  requirements: DefaultRequirement[] = DEFAULT_CLIENT_REQUIREMENTS,
+): Promise<void> {
+  const { data: priorReqs, error: reqErr } = await supabase
+    .from('document_requirements')
+    .insert(
+      requirements.map(r => ({
+        client_id: clientId,
+        name: r.name,
+        doc_type: r.doc_type,
+        tax_year: taxYear,
+        required: true,
+      })),
+    )
+    .select('id, doc_type');
+  if (reqErr) throw reqErr;
+
+  const uploads = (priorReqs ?? []).map((req: { id: string; doc_type: string }) => ({
+    client_id: clientId,
+    requirement_id: req.id,
+    file_name: `${req.doc_type}_${taxYear}.pdf`,
+    storage_path: `clients/${clientId}/${taxYear}/${req.doc_type}/${req.doc_type}_${taxYear}.pdf`,
+    file_size: 200000,
+    mime_type: 'application/pdf',
+    ai_status: 'verified' as const,
+    tax_year: taxYear,
+    is_prior_year: taxYear !== CURRENT_TAX_YEAR,
+    uploaded_by: null,
+  }));
+
+  if (uploads.length > 0) {
+    const { error: upErr } = await supabase.from('document_uploads').insert(uploads);
+    if (upErr) {
+      const legacy = uploads.map(({ tax_year: _t, is_prior_year: _p, ...rest }) => rest);
+      const { error: upErr2 } = await supabase.from('document_uploads').insert(legacy);
+      if (upErr2) throw upErr2;
+    }
+  }
 }
 
 // ── Document Requirements ──────────────────────────────────────────────────
@@ -329,47 +381,6 @@ export async function createClientRecord(payload: {
     .single();
   if (error) throw error;
   return data;
-}
-
-export async function seedPriorYearBaseline(
-  clientId: string,
-  requirements: DefaultRequirement[] = DEFAULT_CLIENT_REQUIREMENTS,
-): Promise<void> {
-  const { data: priorReqs, error: reqErr } = await supabase
-    .from('document_requirements')
-    .insert(
-      requirements.map(r => ({
-        client_id: clientId,
-        name: r.name,
-        doc_type: r.doc_type,
-        tax_year: PRIOR_TAX_YEAR,
-        required: true,
-      })),
-    )
-    .select('id, doc_type');
-  if (reqErr) throw reqErr;
-
-  const uploads = (priorReqs ?? []).map((req: { id: string; doc_type: string }) => ({
-    client_id: clientId,
-    requirement_id: req.id,
-    file_name: `${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
-    storage_path: `clients/${clientId}/${PRIOR_TAX_YEAR}/${req.doc_type}/${req.doc_type}_${PRIOR_TAX_YEAR}.pdf`,
-    file_size: 200000,
-    mime_type: 'application/pdf',
-    ai_status: 'verified' as const,
-    tax_year: PRIOR_TAX_YEAR,
-    is_prior_year: true,
-    uploaded_by: null,
-  }));
-
-  if (uploads.length > 0) {
-    const { error: upErr } = await supabase.from('document_uploads').insert(uploads);
-    if (upErr) {
-      const legacy = uploads.map(({ tax_year: _t, is_prior_year: _p, ...rest }) => rest);
-      const { error: upErr2 } = await supabase.from('document_uploads').insert(legacy);
-      if (upErr2) throw upErr2;
-    }
-  }
 }
 
 // ── Document Uploads ───────────────────────────────────────────────────────

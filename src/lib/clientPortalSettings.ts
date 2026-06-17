@@ -8,7 +8,8 @@ import {
 } from './db';
 import {
   CURRENT_TAX_YEAR,
-  PRIOR_TAX_YEAR,
+  getEnabledPriorYears,
+  isValidPortalTaxYear,
   getRequirementsForBusinessType,
   type BusinessType,
 } from './taxConfig';
@@ -18,8 +19,8 @@ const supabase: any = typedSupabase;
 type Client = Database['public']['Tables']['clients']['Row'];
 type DocReq = Database['public']['Tables']['document_requirements']['Row'];
 
-export const PORTAL_TAX_YEARS = [CURRENT_TAX_YEAR, PRIOR_TAX_YEAR] as const;
-export type PortalTaxYear = typeof PORTAL_TAX_YEARS[number];
+/** @deprecated Use getClientPortalTaxYears(client) for dynamic portal years. */
+export type PortalTaxYear = string;
 
 /** Rows the client portal should show for a profession (excludes admin YoY baseline extras). */
 export function getClientPortalRequirements(
@@ -51,10 +52,16 @@ export function checklistMatchesProfession(
   return template.every(t => types.has(t.doc_type));
 }
 
+export function isPortalTaxYearEnabled(client: Client, year: string): boolean {
+  if (year === CURRENT_TAX_YEAR) return true;
+  const enabled = client.portal_enabled_years ?? [];
+  if (enabled.length > 0) return enabled.includes(year);
+  return client.prior_year_upload_enabled === true && year === '2024';
+}
+
 export function clientCanSelectTaxYear(client: Client, year: string): boolean {
   if (year === CURRENT_TAX_YEAR) return true;
-  if (year === PRIOR_TAX_YEAR) return client.prior_year_upload_enabled === true;
-  return false;
+  return isPortalTaxYearEnabled(client, year) && isValidPortalTaxYear(year);
 }
 
 function clientRow(client: Client | null | undefined): Client | null {
@@ -63,6 +70,7 @@ function clientRow(client: Client | null | undefined): Client | null {
     ...client,
     profession_locked: client.profession_locked ?? false,
     prior_year_upload_enabled: client.prior_year_upload_enabled ?? false,
+    portal_enabled_years: client.portal_enabled_years ?? [],
     year_upload_unlocks: client.year_upload_unlocks ?? [],
   };
 }
@@ -70,6 +78,7 @@ function clientRow(client: Client | null | undefined): Client | null {
 const V7_CLIENT_COLUMNS = new Set([
   'profession_locked',
   'prior_year_upload_enabled',
+  'portal_enabled_years',
   'year_upload_unlocks',
 ]);
 
@@ -99,10 +108,10 @@ export async function isTaxYearUploadLocked(
   const client = clientRow(await fetchClientById(clientId));
   if (!client) return { locked: true, reason: 'Client not found' };
 
-  if (taxYear === PRIOR_TAX_YEAR && !client.prior_year_upload_enabled) {
+  if (taxYear !== CURRENT_TAX_YEAR && !isPortalTaxYearEnabled(client, taxYear)) {
     return {
       locked: true,
-      reason: `Uploads for ${PRIOR_TAX_YEAR} are disabled. Ask your preparer to enable prior-year uploads.`,
+      reason: `Uploads for ${taxYear} are disabled. Ask your preparer to enable prior-year uploads.`,
     };
   }
 
@@ -213,6 +222,15 @@ export type PortalProfessionUpdate = {
   requirementsByYear: Partial<Record<string, DocReq[]>>;
 };
 
+function parseRequirementsByYear(data: unknown): Partial<Record<string, DocReq[]>> {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  const out: Partial<Record<string, DocReq[]>> = {};
+  for (const [year, reqs] of Object.entries(data as Record<string, unknown>)) {
+    out[year] = parseRpcRequirements(reqs);
+  }
+  return out;
+}
+
 function parseProfessionUpdatePayload(
   data: unknown,
   fallbackBusinessType: BusinessType,
@@ -220,16 +238,25 @@ function parseProfessionUpdatePayload(
   const payload = data as {
     error?: string;
     business_type?: string;
+    requirements_by_year?: unknown;
     requirements_2025?: unknown;
     requirements_2024?: unknown;
   } | null;
   if (payload?.error) throw new Error(payload.error);
   const businessType = (payload?.business_type ?? fallbackBusinessType) as BusinessType;
+
+  const fromDynamic = parseRequirementsByYear(payload?.requirements_by_year);
+  if (Object.keys(fromDynamic).length > 0) {
+    return { businessType, requirementsByYear: fromDynamic };
+  }
+
   return {
     businessType,
     requirementsByYear: {
       [CURRENT_TAX_YEAR]: parseRpcRequirements(payload?.requirements_2025),
-      [PRIOR_TAX_YEAR]: parseRpcRequirements(payload?.requirements_2024),
+      ...(parseRpcRequirements(payload?.requirements_2024).length > 0
+        ? { '2024': parseRpcRequirements(payload?.requirements_2024) }
+        : {}),
     },
   };
 }
@@ -260,7 +287,7 @@ export async function ensureClientPortalChecklist(
 ): Promise<DocReq[]> {
   let existing = await fetchDocumentRequirements(clientId, taxYear);
 
-  if (existing.length === 0 && taxYear === PRIOR_TAX_YEAR) {
+  if (existing.length === 0 && taxYear !== CURRENT_TAX_YEAR) {
     const template = getRequirementsForBusinessType(businessType);
     const { error } = await supabase.from('document_requirements').insert(
       template.map(r => ({
@@ -290,6 +317,28 @@ function isMissingRpcError(error: { message?: string } | null): boolean {
   return msg.includes('does not exist') || msg.includes('could not find the function');
 }
 
+async function syncPortalYearsForProfessionFallback(
+  clientId: string,
+  businessType: BusinessType,
+): Promise<Partial<Record<string, DocReq[]>>> {
+  const requirementsByYear: Partial<Record<string, DocReq[]>> = {
+    [CURRENT_TAX_YEAR]: await resolveClientPortalRequirements(
+      clientId,
+      CURRENT_TAX_YEAR,
+      businessType,
+    ),
+  };
+  const client = clientRow(await fetchClientById(clientId));
+  for (const year of getEnabledPriorYears(client ?? { portal_enabled_years: [], prior_year_upload_enabled: false })) {
+    requirementsByYear[year] = await resolveClientPortalRequirements(
+      clientId,
+      year,
+      businessType,
+    );
+  }
+  return requirementsByYear;
+}
+
 export async function setClientProfessionFromPortal(
   clientId: string,
   businessType: BusinessType,
@@ -307,9 +356,9 @@ export async function setClientProfessionFromPortal(
     });
     return resolveClientPortalRequirements(clientId, taxYear, businessType);
   }
-  const payload = data as { error?: string; requirements_2025?: DocReq[] } | null;
-  if (payload?.error) throw new Error(payload.error);
-  return payload?.requirements_2025
+  const payload = parseProfessionUpdatePayload(data, businessType);
+  return payload.requirementsByYear[taxYear]
+    ?? payload.requirementsByYear[CURRENT_TAX_YEAR]
     ?? resolveClientPortalRequirements(clientId, taxYear, businessType);
 }
 
@@ -325,22 +374,10 @@ export async function updateClientProfessionFromPortal(
   if (error) {
     if (!isMissingRpcError(error)) throw error;
     await updateClientFields(clientId, { business_type: businessType });
-    const requirementsByYear: Partial<Record<string, DocReq[]>> = {
-      [CURRENT_TAX_YEAR]: await resolveClientPortalRequirements(
-        clientId,
-        CURRENT_TAX_YEAR,
-        businessType,
-      ),
+    return {
+      businessType,
+      requirementsByYear: await syncPortalYearsForProfessionFallback(clientId, businessType),
     };
-    const client = await fetchClientById(clientId);
-    if (client?.prior_year_upload_enabled) {
-      requirementsByYear[PRIOR_TAX_YEAR] = await resolveClientPortalRequirements(
-        clientId,
-        PRIOR_TAX_YEAR,
-        businessType,
-      );
-    }
-    return { businessType, requirementsByYear };
   }
   return parseProfessionUpdatePayload(data, businessType);
 }
@@ -369,18 +406,52 @@ export async function clearTaxYearReuploadGrant(clientId: string, taxYear: strin
   await updateClientFields(clientId, { year_upload_unlocks: unlocks });
 }
 
+export async function enablePortalTaxYear(
+  clientId: string,
+  year: string,
+): Promise<void> {
+  if (!isValidPortalTaxYear(year) || year === CURRENT_TAX_YEAR) {
+    throw new Error(`Invalid portal tax year: ${year}`);
+  }
+
+  const client = clientRow(await fetchClientById(clientId));
+  if (!client) throw new Error('Client not found');
+
+  const enabled = new Set(getEnabledPriorYears(client));
+  enabled.add(year);
+  await updateClientFields(clientId, {
+    portal_enabled_years: Array.from(enabled).sort((a, b) => Number(b) - Number(a)),
+    ...(year === '2024' ? { prior_year_upload_enabled: true } : {}),
+  });
+
+  const businessType = (client.business_type ?? 'freelancer') as BusinessType;
+  await ensureClientPortalChecklist(clientId, year, businessType);
+}
+
+export async function disablePortalTaxYear(
+  clientId: string,
+  year: string,
+): Promise<void> {
+  const client = clientRow(await fetchClientById(clientId));
+  if (!client) throw new Error('Client not found');
+
+  const enabled = getEnabledPriorYears(client).filter(y => y !== year);
+  await updateClientFields(clientId, {
+    portal_enabled_years: enabled,
+    ...(year === '2024' ? { prior_year_upload_enabled: false } : {}),
+  });
+}
+
+/** @deprecated Use enablePortalTaxYear / disablePortalTaxYear */
 export async function setPriorYearUploadEnabled(
   clientId: string,
   enabled: boolean,
 ): Promise<void> {
-  await updateClientFields(clientId, { prior_year_upload_enabled: enabled });
-  if (!enabled) return;
-
-  const client = await fetchClientById(clientId);
-  if (!client) return;
-
-  const businessType = (client.business_type ?? 'freelancer') as BusinessType;
-  await ensureClientPortalChecklist(clientId, PRIOR_TAX_YEAR, businessType);
+  if (enabled) {
+    await enablePortalTaxYear(clientId, '2024');
+  } else {
+    await disablePortalTaxYear(clientId, '2024');
+  }
 }
 
 export async function unlockClientProfession(clientId: string): Promise<void> {
