@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { authUserUpdateForRole } from "../_shared/setUserAuthRole.ts";
+import type { AppRole } from "../_shared/authRoles.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,11 +95,13 @@ Deno.serve(async (req) => {
     const existing = list.users.find((x) => x.email?.toLowerCase() === u.email.toLowerCase());
 
     let userId: string;
+    const role = u.role as AppRole;
+    const profileMeta = { full_name: u.full_name };
     if (existing) {
       const { data, error } = await admin.auth.admin.updateUserById(existing.id, {
         password: u.password,
         email_confirm: true,
-        user_metadata: { full_name: u.full_name, role: u.role },
+        ...authUserUpdateForRole(role, profileMeta),
       });
       if (error) { results.push({ email: u.email, error: error.message }); continue; }
       userId = data.user.id;
@@ -106,7 +110,7 @@ Deno.serve(async (req) => {
         email: u.email,
         password: u.password,
         email_confirm: true,
-        user_metadata: { full_name: u.full_name, role: u.role },
+        ...authUserUpdateForRole(role, profileMeta),
       });
       if (error) { results.push({ email: u.email, error: error.message }); continue; }
       userId = data.user!.id;
