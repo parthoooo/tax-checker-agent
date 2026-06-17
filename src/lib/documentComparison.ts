@@ -252,6 +252,13 @@ export function compareDocuments(
           reason: 'Not a required tax document',
         });
       }
+    } else {
+      verifiedCurrentByType.set(req.doc_type, upload);
+      result.verified.push({
+        docType: req.doc_type,
+        fileName: upload.file_name,
+        name: req.name,
+      });
     }
   }
 
@@ -270,6 +277,29 @@ export function compareDocuments(
   }
 
   return result;
+}
+
+/** Map YoY comparison outcome to a single upload's ai_status. */
+export function resolveUploadReviewStatus(
+  req: DocReq,
+  upload: DocUpload,
+  result: ComparisonResult,
+): DocUpload['ai_status'] {
+  if (result.wrongYear.some(w => w.fileName === upload.file_name)) return 'flagged';
+  if (result.wrongType.some(w => w.fileName === upload.file_name)) return 'flagged';
+  if (result.unexpected.some(u => u.fileName === upload.file_name)) return 'rejected';
+  if (result.verified.some(v => v.fileName === upload.file_name || v.docType === req.doc_type)) {
+    return 'verified';
+  }
+
+  const yearFromName = detectTaxYearFromFilename(upload.file_name);
+  if (yearFromName && yearFromName !== CURRENT_TAX_YEAR) return 'flagged';
+
+  const detectedSlug = normalizeDocTypeSlug(detectDocType(upload.file_name));
+  if (detectedSlug !== req.doc_type && detectedSlug !== 'tax document') return 'flagged';
+  if (/(bank|statement)/.test(upload.file_name.toLowerCase())) return 'rejected';
+
+  return 'verified';
 }
 
 export function comparisonToEmailLabels(result: ComparisonResult): string[] {

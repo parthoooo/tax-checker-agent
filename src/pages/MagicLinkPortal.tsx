@@ -5,27 +5,20 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  CheckCircle2, AlertCircle, Clock, Upload, FileText, Loader2, XCircle
+  CheckCircle2, AlertCircle, Clock, Upload, FileText, Loader2, XCircle, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { resolveMagicLink, submitDocumentsViaMagicLink, magicLinkUpsertUpload, magicLinkCreateFlag, magicLinkCreateEmailDraft, magicLinkLogActivity } from '@/lib/magicLinkDb';
-import { buildEmailDraftBody } from '@/lib/aiSimulation';
-import { uploadDocumentToStorage } from '@/utils/uploadDocument';
-import { analyzeDocument } from '@/utils/analyzeDocument';
-import { compareDocuments } from '@/lib/documentComparison';
-import AnalysisSummary from '@/components/client/AnalysisSummary';
-import type { ComparisonResult } from '@/lib/documentComparison';
-import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR, CURRENT_TAX_YEAR_NUM } from '@/lib/taxConfig';
+import { resolveMagicLink, submitDocumentsViaMagicLink } from '@/lib/magicLinkDb';
+import { persistClientDocumentPackage } from '@/lib/clientDocumentSubmit';
+import { clearTaxYearReuploadGrant } from '@/lib/clientPortalSettings';
+import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
-type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
-type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
 
-type UploadState = 'idle' | 'uploading' | 'analyzing' | 'done';
+type DocReq = Database['public']['Tables']['document_requirements']['Row'];
+type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
 
 interface ReqWithUpload extends DocReq {
   upload?: DocUpload;
-  uploadState?: UploadState;
-  validationResult?: { title: string; detail: string; aiStatus: DocUpload['ai_status'] };
 }
 
 const MagicLinkPortal: React.FC = () => {
@@ -34,32 +27,22 @@ const MagicLinkPortal: React.FC = () => {
   const [tokenExpired, setTokenExpired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [requirements, setRequirements] = useState<ReqWithUpload[]>([]);
-  const [analysisResult, setAnalysisResult] = useState<ComparisonResult | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const refreshAnalysis = useCallback(async () => {
-    if (!token || !client) return;
-    setAnalysisLoading(true);
-    try {
-      const payload = await resolveMagicLink(token);
-      if (!payload || payload === 'expired') return;
-      const uploadsByReq = new Map(payload.uploads.map(u => [u.requirement_id, u]));
-      const currentUploads = payload.requirements
-        .map(r => uploadsByReq.get(r.id))
-        .filter(Boolean) as DocUpload[];
-      const result = compareDocuments(
-        payload.requirements,
-        currentUploads,
-        payload.prior_uploads ?? [],
-        payload.prior_requirements ?? [],
-      );
-      setAnalysisResult(result);
-    } finally {
-      setAnalysisLoading(false);
-    }
-  }, [token, client]);
+  const reloadPortal = useCallback(async () => {
+    if (!token) return;
+    const result = await resolveMagicLink(token);
+    if (result === null || result === 'expired') return;
+    setClient(result.client);
+    setSubmitted(result.client.status === 'complete');
+    const uploadsByReq = new Map(result.uploads.map(u => [u.requirement_id, u]));
+    setRequirements(result.requirements.map(req => ({
+      ...req,
+      upload: uploadsByReq.get(req.id),
+    })));
+  }, [token]);
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
@@ -76,155 +59,64 @@ const MagicLinkPortal: React.FC = () => {
     }).catch(() => setTokenExpired(true)).finally(() => setLoading(false));
   }, [token]);
 
-  const handleFileChange = useCallback(async (req: ReqWithUpload, file: File) => {
-    if (!client || !token) return;
+  const handleFileChange = (req: ReqWithUpload, file: File) => {
+    setPendingFiles(prev => ({ ...prev, [req.id]: file }));
+  };
 
-    setRequirements(prev => prev.map(r =>
-      r.id === req.id ? { ...r, uploadState: 'uploading' } : r
-    ));
-
-    await new Promise(r => setTimeout(r, 600));
-
-    setRequirements(prev => prev.map(r =>
-      r.id === req.id ? { ...r, uploadState: 'analyzing' } : r
-    ));
-
-    const existingNames = requirements
-      .filter(r => r.upload && r.id !== req.id)
-      .map(r => r.upload!.file_name);
-
-    const analysis = await analyzeDocument({
-      fileName: file.name,
-      mimeType: file.type,
-      requirementDocType: req.doc_type,
-      clientId: client.id,
-      existingFilenames: existingNames,
+  const handleFileClear = (requirementId: string) => {
+    setPendingFiles(prev => {
+      const next = { ...prev };
+      delete next[requirementId];
+      return next;
     });
+  };
 
-    const aiDbStatus = analysis.aiStatus === 'verified' ? 'verified' : 'flagged';
-    let storagePath = `clients/${client.id}/${CURRENT_TAX_YEAR}/${req.doc_type}/${file.name.replace(/\s+/g, '_')}`;
-
-    if (analysis.aiStatus === 'verified') {
-      const stored = await uploadDocumentToStorage(
-        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, !!req.upload, token,
-      );
-      if (stored.storagePath) storagePath = stored.storagePath;
-    } else if (req.upload) {
-      const stored = await uploadDocumentToStorage(
-        file, client.id, req.doc_type, CURRENT_TAX_YEAR_NUM, true, token,
-      );
-      if (!stored.success) {
-        setRequirements(prev => prev.map(r =>
-          r.id === req.id ? { ...r, uploadState: 'idle' } : r
-        ));
-        toast.error('Upload failed', { description: stored.error });
-        return;
-      }
-      if (stored.storagePath) storagePath = stored.storagePath;
-    }
-
-    try {
-      const upload = await magicLinkUpsertUpload(token, {
-        existingUploadId: req.upload?.id,
-        clientId: client.id,
-        requirementId: req.id,
-        fileName: file.name,
-        storagePath,
-        fileSize: file.size,
-        mimeType: file.type || 'application/octet-stream',
-        aiStatus: aiDbStatus,
-        taxYear: CURRENT_TAX_YEAR,
-      });
-
-      if (analysis.aiStatus !== 'verified') {
-        const flagTypeMap: Record<string, 'wrong-year' | 'duplicate' | 'unexpected'> = {
-          wrong_year: 'wrong-year',
-          duplicate:  'duplicate',
-          unexpected: 'unexpected',
-        };
-        const ft = flagTypeMap[analysis.aiStatus] ?? 'unexpected';
-        await magicLinkCreateFlag(token, {
-          clientId: client.id,
-          uploadId: upload.id,
-          flagType: ft,
-          severity: ft === 'wrong-year' ? 'HIGH' : 'MEDIUM',
-          description: analysis.aiMessage,
-        });
-
-        const draftResult = {
-          outcome: ft === 'wrong-year' ? 'wrong-year' : ft === 'duplicate' ? 'duplicate' : 'unexpected',
-          title: 'Issue Detected',
-          detail: analysis.aiMessage,
-          aiStatus: 'flagged' as const,
-          confidence: analysis.confidence,
-        };
-        const emailContent = buildEmailDraftBody(
-          client.name,
-          draftResult as any,
-          file.name,
-          client.assigned_preparer ?? 'Your Tax Preparer',
-        );
-        await magicLinkCreateEmailDraft(token, {
-          clientId: client.id,
-          toEmail: client.email,
-          fromLabel: client.assigned_preparer ?? 'Your Tax Preparer',
-          subject: emailContent.subject,
-          body: emailContent.body,
-        });
-      }
-
-      await magicLinkLogActivity(token, {
-        clientId: client.id,
-        actor: client.name,
-        actorType: 'client',
-        action: `Uploaded ${file.name} via magic link portal`,
-      });
-
-      await refreshAnalysis();
-
-      const validationResult = {
-        outcome: analysis.aiStatus === 'verified' ? 'verified'
-               : analysis.aiStatus === 'wrong_year' ? 'wrong-year'
-               : analysis.aiStatus === 'duplicate'  ? 'duplicate'
-               : 'unexpected',
-        title:     analysis.aiStatus === 'verified' ? 'Document Verified' : 'Issue Detected',
-        detail:    analysis.aiMessage || '',
-        aiStatus:  aiDbStatus as any,
-        confidence: analysis.confidence,
-      };
-      setRequirements(prev => prev.map(r =>
-        r.id === req.id
-          ? { ...r, upload, uploadState: 'done', validationResult: validationResult as any }
-          : r
-      ));
-    } catch {
-      setRequirements(prev => prev.map(r =>
-        r.id === req.id ? { ...r, uploadState: 'idle' } : r
-      ));
-      toast.error('Upload failed. Please try again.');
-    }
-  }, [client, requirements, refreshAnalysis, token]);
-
-  const verifiedCount = requirements.filter(r => r.upload?.ai_status === 'verified').length;
-  const uploadedCount = requirements.filter(r => r.required && r.upload).length;
-  const totalRequired = requirements.filter(r => r.required).length;
-  const allSlotsFilled = totalRequired > 0 && uploadedCount === totalRequired;
-  const alreadySubmitted = submitted || (client?.status === 'complete' && allSlotsFilled);
-  const missingNotUploaded = requirements.filter(
-    r => r.required && !r.upload,
-  );
+  const requiredDocs = requirements.filter(r => r.required);
+  const totalRequired = requiredDocs.length;
+  const dbUploadedCount = requiredDocs.filter(r => r.upload).length;
+  const selectedCount = requiredDocs.filter(r => pendingFiles[r.id]).length;
+  const alreadySubmitted =
+    submitted && dbUploadedCount === totalRequired && totalRequired > 0;
+  const filledCount = alreadySubmitted ? dbUploadedCount : selectedCount;
+  const allSlotsFilled = totalRequired > 0 && (alreadySubmitted ? dbUploadedCount === totalRequired : selectedCount === totalRequired);
+  const pct = totalRequired > 0 ? Math.round((filledCount / totalRequired) * 100) : 0;
+  const missingNotSelected = alreadySubmitted
+    ? []
+    : requiredDocs.filter(r => !pendingFiles[r.id]);
 
   const handleSubmitForReview = async () => {
     if (!token || !client || !allSlotsFilled || submitting || alreadySubmitted) return;
     setSubmitting(true);
     try {
+      const slots = requiredDocs
+        .filter(r => pendingFiles[r.id])
+        .map(r => ({
+          requirementId: r.id,
+          docType: r.doc_type,
+          documentName: r.name,
+          file: pendingFiles[r.id],
+          existingUploadId: r.upload?.id,
+        }));
+
+      await persistClientDocumentPackage({
+        clientId: client.id,
+        taxYear: CURRENT_TAX_YEAR,
+        slots,
+        actorName: client.name,
+        magicLinkToken: token,
+      });
+
       const result = await submitDocumentsViaMagicLink(token);
       if (result.error || !result.ok) {
         throw new Error(result.error ?? 'Submission failed');
       }
 
+      await clearTaxYearReuploadGrant(client.id, CURRENT_TAX_YEAR).catch(() => {});
+
+      setPendingFiles({});
       setSubmitted(true);
       setClient({ ...client, status: 'complete' });
+      await reloadPortal();
       toast.success('Documents submitted for review', {
         description: 'Your preparer has been notified. Thank you!',
       });
@@ -261,14 +153,8 @@ const MagicLinkPortal: React.FC = () => {
     );
   }
 
-  const verifiedDisplay = verifiedCount;
-  const uploadedDisplay = uploadedCount;
-  const total = totalRequired;
-  const pct = total > 0 ? Math.round((uploadedDisplay / total) * 100) : 0;
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-[#0f1f3d] text-white px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
@@ -280,22 +166,20 @@ const MagicLinkPortal: React.FC = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-        {/* Greeting */}
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Hi {client.name.split(' ')[0]},</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Please upload your {CURRENT_TAX_YEAR} tax documents below. Each document is instantly verified by AI and compared against your {PRIOR_TAX_YEAR} filings.
+            Select a file for each required {CURRENT_TAX_YEAR} document below, then submit when all slots are filled.
+            Files are uploaded when you click Submit for Review.
           </p>
         </div>
 
-        {/* Progress */}
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Documents received</span>
+              <span className="text-sm font-medium text-gray-700">Document progress</span>
               <span className="text-sm text-gray-500">
-                {uploadedDisplay} of {total} uploaded
-                {verifiedDisplay < uploadedDisplay && ` · ${verifiedDisplay} verified`}
+                {filledCount} of {totalRequired} {alreadySubmitted ? 'submitted' : 'selected'}
               </span>
             </div>
             <Progress value={pct} className="h-2" />
@@ -312,26 +196,25 @@ const MagicLinkPortal: React.FC = () => {
           </CardContent>
         </Card>
 
-        <AnalysisSummary result={analysisResult} loading={analysisLoading} />
-
-        {/* Document list */}
         <div className="space-y-3">
-          {requirements.map(req => (
+          {requiredDocs.map(req => (
             <DocumentRow
               key={req.id}
               req={req}
+              pendingFile={pendingFiles[req.id] ?? null}
+              alreadySubmitted={alreadySubmitted}
               onFileChange={handleFileChange}
+              onFileClear={handleFileClear}
             />
           ))}
         </div>
 
-        {/* Still missing / not verified */}
-        {missingNotUploaded.length > 0 && (
+        {missingNotSelected.length > 0 && (
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="pt-4 pb-4">
-              <p className="text-sm font-medium text-amber-800 mb-2">Still missing uploads:</p>
+              <p className="text-sm font-medium text-amber-800 mb-2">Still need a file for:</p>
               <ul className="space-y-1">
-                {missingNotUploaded.map(r => (
+                {missingNotSelected.map(r => (
                   <li key={r.id} className="text-sm text-amber-700 flex items-center gap-2">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     {r.name}
@@ -356,7 +239,7 @@ const MagicLinkPortal: React.FC = () => {
               <>
                 <h3 className="text-lg font-medium">Ready to Submit?</h3>
                 <p className="text-sm text-muted-foreground">
-                  Submit when every required slot has a file. Flagged documents are OK — your preparer will review them.
+                  Select a file for every required slot, then submit to send your documents to your preparer.
                 </p>
                 <Button
                   size="lg"
@@ -386,43 +269,42 @@ const MagicLinkPortal: React.FC = () => {
 
 interface DocumentRowProps {
   req: ReqWithUpload;
+  pendingFile: File | null;
+  alreadySubmitted: boolean;
   onFileChange: (req: ReqWithUpload, file: File) => void;
+  onFileClear: (requirementId: string) => void;
 }
 
-const DocumentRow: React.FC<DocumentRowProps> = ({ req, onFileChange }) => {
+const DocumentRow: React.FC<DocumentRowProps> = ({
+  req,
+  pendingFile,
+  alreadySubmitted,
+  onFileChange,
+  onFileClear,
+}) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const state = req.uploadState;
   const upload = req.upload;
-  const result = req.validationResult;
 
-  const isAnalyzing = state === 'uploading' || state === 'analyzing';
-
-  const statusLabel =
-    state === 'uploading' ? 'Uploading…' :
-    state === 'analyzing' ? 'AI analyzing…' :
-    upload?.ai_status === 'verified' ? 'Verified' :
-    upload?.ai_status === 'flagged'  ? 'Issue detected' :
-    upload?.ai_status === 'rejected' ? 'Rejected' :
-    'Not uploaded';
+  const slotStatus = alreadySubmitted && upload
+    ? 'Submitted'
+    : pendingFile
+      ? 'Selected'
+      : 'Pending';
 
   const statusColor =
-    upload?.ai_status === 'verified' ? 'bg-green-100 text-green-700' :
-    upload?.ai_status === 'flagged'  ? 'bg-red-100 text-red-700' :
-    upload?.ai_status === 'rejected' ? 'bg-red-100 text-red-700' :
-    isAnalyzing ? 'bg-blue-100 text-blue-700' :
+    slotStatus === 'Submitted' ? 'bg-green-100 text-green-700' :
+    slotStatus === 'Selected' ? 'bg-blue-100 text-blue-700' :
     'bg-gray-100 text-gray-500';
 
   return (
-    <Card className={upload?.ai_status === 'flagged' ? 'border-red-200' : ''}>
+    <Card>
       <CardContent className="pt-4 pb-4">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 shrink-0">
-            {isAnalyzing ? (
-              <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-            ) : upload?.ai_status === 'verified' ? (
+            {slotStatus === 'Submitted' ? (
               <CheckCircle2 className="w-5 h-5 text-green-500" />
-            ) : upload?.ai_status === 'flagged' ? (
-              <AlertCircle className="w-5 h-5 text-red-500" />
+            ) : slotStatus === 'Selected' ? (
+              <CheckCircle2 className="w-5 h-5 text-blue-500" />
             ) : (
               <Clock className="w-5 h-5 text-gray-400" />
             )}
@@ -432,32 +314,29 @@ const DocumentRow: React.FC<DocumentRowProps> = ({ req, onFileChange }) => {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium text-sm text-gray-800">{req.name}</span>
               <Badge variant="outline" className="text-xs">{req.tax_year}</Badge>
-              <Badge className={`text-xs ${statusColor}`}>{statusLabel}</Badge>
+              <Badge className={`text-xs ${statusColor}`}>{slotStatus}</Badge>
             </div>
 
-            {upload && !isAnalyzing && (
+            {alreadySubmitted && upload && (
               <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                 <FileText className="w-3 h-3" />
                 {upload.file_name}
               </p>
             )}
-
-            {result && state === 'done' && (
-              <div className={`mt-2 p-2 rounded text-xs ${
-                result.aiStatus === 'verified' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-              }`}>
-                <p className="font-medium">{result.title}</p>
-                <p className="mt-0.5">{result.detail}</p>
-              </div>
+            {!alreadySubmitted && pendingFile && (
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                {pendingFile.name} · ready to submit
+              </p>
             )}
           </div>
 
-          {!isAnalyzing && (
-            <div className="shrink-0">
+          {!alreadySubmitted && (
+            <div className="shrink-0 flex items-center gap-1">
               <input
                 ref={inputRef}
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                 className="hidden"
                 onChange={e => {
                   const f = e.target.files?.[0];
@@ -465,13 +344,22 @@ const DocumentRow: React.FC<DocumentRowProps> = ({ req, onFileChange }) => {
                   e.target.value = '';
                 }}
               />
+              {pendingFile && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onFileClear(req.id)}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              )}
               <Button
                 size="sm"
-                variant={upload ? 'outline' : 'default'}
+                variant={pendingFile ? 'outline' : 'default'}
                 onClick={() => inputRef.current?.click()}
               >
                 <Upload className="w-3.5 h-3.5 mr-1" />
-                {upload ? 'Replace' : 'Upload'}
+                {pendingFile ? 'Replace' : 'Select'}
               </Button>
             </div>
           )}

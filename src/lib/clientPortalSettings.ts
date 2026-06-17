@@ -4,6 +4,7 @@ import {
   fetchClientById,
   fetchDocumentRequirements,
   fetchDocumentUploadsForYear,
+  hasClientSubmittedTaxYear,
 } from './db';
 import {
   CURRENT_TAX_YEAR,
@@ -105,15 +106,15 @@ export async function isTaxYearUploadLocked(
     };
   }
 
-  const uploads = await fetchDocumentUploadsForYear(clientId, taxYear);
-  if (uploads.length === 0) return { locked: false };
+  const submitted = await hasClientSubmittedTaxYear(clientId, taxYear);
+  if (!submitted) return { locked: false };
 
   const unlocks: string[] = client.year_upload_unlocks ?? [];
   if (unlocks.includes(taxYear)) return { locked: false };
 
   return {
     locked: true,
-    reason: `You already uploaded ${taxYear} documents. Contact your preparer to unlock this year for changes.`,
+    reason: `Your ${taxYear} documents were already submitted. Contact your preparer if you need to upload again.`,
   };
 }
 
@@ -207,6 +208,32 @@ function parseRpcRequirements(data: unknown): DocReq[] {
   return [];
 }
 
+export type PortalProfessionUpdate = {
+  businessType: BusinessType;
+  requirementsByYear: Partial<Record<string, DocReq[]>>;
+};
+
+function parseProfessionUpdatePayload(
+  data: unknown,
+  fallbackBusinessType: BusinessType,
+): PortalProfessionUpdate {
+  const payload = data as {
+    error?: string;
+    business_type?: string;
+    requirements_2025?: unknown;
+    requirements_2024?: unknown;
+  } | null;
+  if (payload?.error) throw new Error(payload.error);
+  const businessType = (payload?.business_type ?? fallbackBusinessType) as BusinessType;
+  return {
+    businessType,
+    requirementsByYear: {
+      [CURRENT_TAX_YEAR]: parseRpcRequirements(payload?.requirements_2025),
+      [PRIOR_TAX_YEAR]: parseRpcRequirements(payload?.requirements_2024),
+    },
+  };
+}
+
 /** Client session: sync checklist via SECURITY DEFINER RPC (RLS blocks direct writes). */
 export async function resolveClientPortalRequirements(
   clientId: string,
@@ -290,7 +317,7 @@ export async function setClientProfessionFromPortal(
 export async function updateClientProfessionFromPortal(
   clientId: string,
   businessType: BusinessType,
-): Promise<void> {
+): Promise<PortalProfessionUpdate> {
   const { data, error } = await supabase.rpc('client_update_profession', {
     p_business_type: businessType,
     p_lock_profession: false,
@@ -298,10 +325,24 @@ export async function updateClientProfessionFromPortal(
   if (error) {
     if (!isMissingRpcError(error)) throw error;
     await updateClientFields(clientId, { business_type: businessType });
-    return;
+    const requirementsByYear: Partial<Record<string, DocReq[]>> = {
+      [CURRENT_TAX_YEAR]: await resolveClientPortalRequirements(
+        clientId,
+        CURRENT_TAX_YEAR,
+        businessType,
+      ),
+    };
+    const client = await fetchClientById(clientId);
+    if (client?.prior_year_upload_enabled) {
+      requirementsByYear[PRIOR_TAX_YEAR] = await resolveClientPortalRequirements(
+        clientId,
+        PRIOR_TAX_YEAR,
+        businessType,
+      );
+    }
+    return { businessType, requirementsByYear };
   }
-  const payload = data as { error?: string } | null;
-  if (payload?.error) throw new Error(payload.error);
+  return parseProfessionUpdatePayload(data, businessType);
 }
 
 export async function unlockTaxYearUpload(
@@ -313,6 +354,19 @@ export async function unlockTaxYearUpload(
   const unlocks = new Set<string>(client.year_upload_unlocks ?? []);
   unlocks.add(taxYear);
   await updateClientFields(clientId, { year_upload_unlocks: Array.from(unlocks) });
+}
+
+/** Admin grants permission for client to upload again after a prior submission. */
+export async function allowClientReupload(clientId: string, taxYear: string): Promise<void> {
+  await unlockTaxYearUpload(clientId, taxYear);
+}
+
+/** Remove re-upload permission after client submits again. */
+export async function clearTaxYearReuploadGrant(clientId: string, taxYear: string): Promise<void> {
+  const client = await fetchClientById(clientId);
+  if (!client) return;
+  const unlocks = (client.year_upload_unlocks ?? []).filter(y => y !== taxYear);
+  await updateClientFields(clientId, { year_upload_unlocks: unlocks });
 }
 
 export async function setPriorYearUploadEnabled(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageShell from '@/components/layout/PageShell';
 import PageHeader from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -23,7 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { statusBadge, initials } from '@/lib/mockData';
-import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Clock, Copy, Send, RotateCcw, Eye, FolderOpen, Sparkles } from 'lucide-react';
+import { ArrowLeft, Mail, Link2, Loader2, CheckCircle2, AlertCircle, Copy, Send, RotateCcw, Eye, FolderOpen, Sparkles, Pencil, Trash2 } from 'lucide-react';
 import ReminderModal from '@/components/common/ReminderModal';
 import InputSheet from '@/components/client/InputSheet';
 import AnalysisSummary from '@/components/client/AnalysisSummary';
@@ -53,13 +54,16 @@ import {
   resetClientDocuments,
   getDocumentSignedUrl,
   updateClientBusinessType,
+  updateClientInfo,
+  deleteClientCompletely,
   seedPriorYearTestBaseline,
+  hasClientSubmittedTaxYear,
 } from '@/lib/db';
-import { getDocumentComparison } from '@/lib/getDocumentComparison';
+import { runAdminAiReview } from '@/lib/getDocumentComparison';
 import { sendClientCorrection, resolveClientCorrection } from '@/lib/clientCorrections';
 import {
   setPriorYearUploadEnabled,
-  unlockTaxYearUpload,
+  allowClientReupload,
   unlockClientProfession,
 } from '@/lib/clientPortalSettings';
 import { useAuth } from '@/contexts/AuthContext';
@@ -80,6 +84,7 @@ type Activity  = Database['public']['Tables']['activity_log']['Row'] & { clients
 
 const ClientDetail: React.FC = () => {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [client, setClient] = useState<Client | null>(null);
   const [requirements, setRequirements] = useState<DocReq[]>([]);
@@ -100,8 +105,19 @@ const ClientDetail: React.FC = () => {
   const [seedingBaseline, setSeedingBaseline] = useState(false);
   const [savingBusinessType, setSavingBusinessType] = useState(false);
   const [portalSaving, setPortalSaving] = useState(false);
+  const [submittedYears, setSubmittedYears] = useState<string[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    assigned_staff: '',
+    status: 'active' as Client['status'],
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const reloadClientData = async () => {
+  const reloadClientData = async (options?: { keepAnalysis?: boolean }) => {
     const [c, reqs, ups, allFlags, allActivity] = await Promise.all([
       fetchClientById(id),
       fetchDocumentRequirements(id),
@@ -114,6 +130,12 @@ const ClientDetail: React.FC = () => {
     setUploads(ups);
     setFlags(allFlags.filter(f => f.client_id === id));
     setActivity(allActivity.filter(a => a.client_id === id));
+    if (!options?.keepAnalysis) setAnalysisResult(null);
+
+    const years: string[] = [];
+    if (await hasClientSubmittedTaxYear(id, CURRENT_TAX_YEAR)) years.push(CURRENT_TAX_YEAR);
+    if (await hasClientSubmittedTaxYear(id, PRIOR_TAX_YEAR)) years.push(PRIOR_TAX_YEAR);
+    setSubmittedYears(years);
   };
 
   useEffect(() => {
@@ -155,7 +177,12 @@ const ClientDetail: React.FC = () => {
     if (!client) return;
     setAnalysisLoading(true);
     try {
-      setAnalysisResult(await getDocumentComparison(client.id));
+      const result = await runAdminAiReview(client.id);
+      setAnalysisResult(result);
+      await reloadClientData({ keepAnalysis: true });
+      toast.success('AI review complete', {
+        description: 'Checklist AI Result column updated from review findings.',
+      });
     } catch (err: any) {
       toast.error('AI review failed', { description: err?.message });
     } finally {
@@ -246,15 +273,17 @@ const ClientDetail: React.FC = () => {
     }
   };
 
-  const handleUnlockYear = async (taxYear: string) => {
+  const handleAllowReupload = async (taxYear: string) => {
     if (!client) return;
     setPortalSaving(true);
     try {
-      await unlockTaxYearUpload(client.id, taxYear);
+      await allowClientReupload(client.id, taxYear);
       await reloadClientData();
-      toast.success(`${taxYear} re-upload unlocked for client`);
+      toast.success(`${taxYear} re-upload allowed`, {
+        description: 'The client can upload and submit again for this tax year.',
+      });
     } catch (err: any) {
-      toast.error('Unlock failed', { description: err?.message });
+      toast.error('Could not allow re-upload', { description: err?.message });
     } finally {
       setPortalSaving(false);
     }
@@ -266,11 +295,66 @@ const ClientDetail: React.FC = () => {
     try {
       await unlockClientProfession(client.id);
       await reloadClientData();
-      toast.success('Client can change profession on portal again');
+      toast.success('Client can change profession on portal again', {
+        description: 'Have the client refresh their portal tab, pick a different profession, then click Save profession.',
+      });
     } catch (err: any) {
       toast.error('Unlock failed', { description: err?.message });
     } finally {
       setPortalSaving(false);
+    }
+  };
+
+  const openEditDialog = () => {
+    if (!client) return;
+    setEditForm({
+      name: client.name,
+      email: client.email,
+      phone: client.phone ?? '',
+      assigned_staff: client.assigned_staff ?? '',
+      status: client.status,
+    });
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!client) return;
+    if (!editForm.name.trim() || !editForm.email.trim()) {
+      toast.error('Name and email are required');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const updated = await updateClientInfo(client.id, {
+        name: editForm.name.trim(),
+        email: editForm.email.trim(),
+        phone: editForm.phone.trim() || null,
+        assigned_staff: editForm.assigned_staff.trim() || null,
+        status: editForm.status,
+      });
+      setClient(updated);
+      setEditOpen(false);
+      toast.success('Client updated');
+    } catch (err: any) {
+      toast.error('Update failed', { description: err?.message });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    if (!client) return;
+    setDeleting(true);
+    try {
+      const clientName = client.name;
+      await deleteClientCompletely(client.id);
+      toast.success('Client deleted', {
+        description: `${clientName} and all related documents were removed from the project.`,
+      });
+      navigate('/clients');
+    } catch (err: any) {
+      toast.error('Delete failed', { description: err?.message });
+      setDeleting(false);
     }
   };
 
@@ -326,6 +410,26 @@ const ClientDetail: React.FC = () => {
     return { req, upload };
   });
 
+  const reuploadLockedYears = submittedYears.filter(
+    y => !(client.year_upload_unlocks ?? []).includes(y),
+  );
+
+  const uploadAiResultLabel = (req: DocReq, upload?: DocUpload): string => {
+    if (!upload) {
+      if (analysisResult?.missing.some(m => m.docType === req.doc_type || m.name === req.name)) {
+        return 'Missing';
+      }
+      return '—';
+    }
+    switch (upload.ai_status) {
+      case 'verified': return 'Verified';
+      case 'flagged': return 'Flagged';
+      case 'rejected': return 'Rejected';
+      case 'pending': return 'Pending review';
+      default: return 'Pending review';
+    }
+  };
+
   const clientActivity = activity.filter(a => a.client_id === id);
 
   return (
@@ -363,16 +467,48 @@ const ClientDetail: React.FC = () => {
             <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-lg font-semibold">
               {initials(client.name)}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-[200px]">
               <p className="font-medium">{client.name}</p>
               <p className="text-sm text-gray-500">{client.email}</p>
+              {client.phone && <p className="text-sm text-gray-500">{client.phone}</p>}
             </div>
-            <div className="flex gap-3 flex-wrap">
+            <div className="flex gap-3 flex-wrap items-center">
               <Badge className={statusBadge(client.status as any)}>{client.status}</Badge>
               {client.assigned_staff && <Badge variant="outline">Assigned: {client.assigned_staff}</Badge>}
               <Badge variant="outline">
                 {client.documents_submitted}/{client.documents_required} docs
               </Badge>
+              <Button variant="outline" size="sm" onClick={openEditDialog}>
+                <Pencil className="w-4 h-4 mr-1" /> Edit client
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-50" disabled={deleting}>
+                    {deleting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                    Delete client
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {client.name}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently removes the client from the project: all document uploads, checklists,
+                      AI flags, activity, magic links, corrections, and storage files. This cannot be undone.
+                      The login account in Supabase Auth is not deleted automatically.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                    <Button
+                      variant="destructive"
+                      onClick={handleDeleteClient}
+                      disabled={deleting}
+                    >
+                      Delete permanently
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </CardContent>
         </Card>
@@ -400,40 +536,51 @@ const ClientDetail: React.FC = () => {
           {/* Document Checklist */}
           <TabsContent value="docs" className="space-y-4">
             <Card>
-              <CardContent className="pt-6 flex flex-wrap items-end gap-4">
-                <div className="space-y-2 min-w-[220px]">
-                  <Label>Business / profession</Label>
-                  <Select
-                    value={(client.business_type ?? 'freelancer') as BusinessType}
-                    onValueChange={(v) => handleBusinessTypeChange(v as BusinessType)}
-                    disabled={savingBusinessType}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(BUSINESS_TYPE_LABELS) as BusinessType[]).map(key => (
-                        <SelectItem key={key} value={key}>{BUSINESS_TYPE_LABELS[key]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-2 min-w-[220px]">
+                    <Label>Business / profession</Label>
+                    <Select
+                      value={(client.business_type ?? 'freelancer') as BusinessType}
+                      onValueChange={(v) => handleBusinessTypeChange(v as BusinessType)}
+                      disabled={savingBusinessType}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(BUSINESS_TYPE_LABELS) as BusinessType[]).map(key => (
+                          <SelectItem key={key} value={key}>{BUSINESS_TYPE_LABELS[key]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="invisible select-none" aria-hidden>Baseline</Label>
+                    <Button variant="outline" onClick={handleSeedPriorBaseline} disabled={seedingBaseline}>
+                      {seedingBaseline ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                      Set up {PRIOR_TAX_YEAR} test baseline
+                    </Button>
+                  </div>
                 </div>
-                <Button variant="outline" onClick={handleSeedPriorBaseline} disabled={seedingBaseline}>
-                  {seedingBaseline ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
-                  Set up {PRIOR_TAX_YEAR} test baseline
-                </Button>
-                <p className="text-xs text-muted-foreground w-full">
-                  Seeds verified placeholder {PRIOR_TAX_YEAR} files for YoY AI comparison only — clients do not upload here.
-                </p>
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <p>Updates the client portal checklist and locks profession on the client side.</p>
+                  <p>Seeds verified placeholder {PRIOR_TAX_YEAR} files for YoY AI comparison only — clients do not upload here.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-4">
                 <Button variant="outline" onClick={handleTogglePriorYear} disabled={portalSaving}>
                   {client.prior_year_upload_enabled ? `Disable ${PRIOR_TAX_YEAR} on portal` : `Enable ${PRIOR_TAX_YEAR} on portal`}
                 </Button>
-                <Button variant="outline" onClick={() => handleUnlockYear(CURRENT_TAX_YEAR)} disabled={portalSaving}>
-                  Unlock {CURRENT_TAX_YEAR} re-upload
-                </Button>
-                <Button variant="outline" onClick={() => handleUnlockYear(PRIOR_TAX_YEAR)} disabled={portalSaving}>
-                  Unlock {PRIOR_TAX_YEAR} re-upload
-                </Button>
+                {reuploadLockedYears.map(year => (
+                  <Button
+                    key={year}
+                    variant="outline"
+                    onClick={() => handleAllowReupload(year)}
+                    disabled={portalSaving}
+                  >
+                    Allow {year} re-upload
+                  </Button>
+                ))}
                 {client.profession_locked && (
                   <Button variant="outline" onClick={handleUnlockProfession} disabled={portalSaving}>
                     Unlock profession on portal
@@ -452,10 +599,19 @@ const ClientDetail: React.FC = () => {
                 <Button variant="ghost" size="sm" onClick={handleClearCorrection}>
                   Clear correction from portal
                 </Button>
+                </div>
               </CardContent>
             </Card>
 
             <AnalysisSummary result={analysisResult} loading={analysisLoading} />
+
+            {!analysisResult && !analysisLoading && (
+              <Card className="border-dashed">
+                <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                  Click <strong>Run AI Review</strong> to compare this client&apos;s uploads against the prior year and generate a report.
+                </CardContent>
+              </Card>
+            )}
 
             <div className="flex justify-end mb-3">
               <AlertDialog>
@@ -493,7 +649,6 @@ const ClientDetail: React.FC = () => {
                     <tr className="border-b bg-gray-50 text-left text-xs uppercase text-gray-500">
                       <th className="py-3 px-4">Document</th>
                       <th className="py-3 px-4">Year</th>
-                      <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">AI Result</th>
                       <th className="py-3 px-4">File Name</th>
                       <th className="py-3 px-4">Uploaded</th>
@@ -502,32 +657,19 @@ const ClientDetail: React.FC = () => {
                   </thead>
                   <tbody>
                     {docRows.map(({ req, upload }) => {
-                      const aiStatus = upload?.ai_status;
-                      const statusLabel =
-                        !upload          ? 'Pending' :
-                        aiStatus === 'verified' ? 'Verified' :
-                        aiStatus === 'flagged'  ? 'Flagged' :
-                        aiStatus === 'rejected' ? 'Rejected' :
-                        'Analyzing';
-                      const statusCls =
-                        !upload          ? 'bg-gray-100 text-gray-500' :
-                        aiStatus === 'verified' ? 'bg-green-100 text-green-700' :
-                        'bg-red-100 text-red-700';
-                      const aiLabel =
-                        !upload          ? '—' :
-                        aiStatus === 'verified' ? '✅ Verified' :
-                        aiStatus === 'flagged'  ? '⚠️ Flagged' :
-                        aiStatus === 'rejected' ? '🔴 Rejected' :
-                        '⏳ Analyzing';
+                      const aiLabel = uploadAiResultLabel(req, upload);
+                      const aiCls =
+                        aiLabel === 'Missing' ? 'text-amber-700 font-medium' :
+                        !upload ? 'text-gray-400' :
+                        upload.ai_status === 'verified' ? 'text-green-700 font-medium' :
+                        upload.ai_status === 'pending' ? 'text-gray-600' :
+                        'text-red-700 font-medium';
 
                       return (
                         <tr key={req.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4 font-medium">{req.name}</td>
                           <td className="py-3 px-4">{req.tax_year}</td>
-                          <td className="py-3 px-4">
-                            <Badge className={statusCls}>{statusLabel}</Badge>
-                          </td>
-                          <td className="py-3 px-4 text-sm">{aiLabel}</td>
+                          <td className={`py-3 px-4 text-sm ${aiCls}`}>{aiLabel}</td>
                           <td className="py-3 px-4 text-gray-600 text-xs">{upload?.file_name ?? '—'}</td>
                           <td className="py-3 px-4 text-gray-500 text-xs">
                             {upload ? new Date(upload.uploaded_at).toLocaleDateString() : '—'}
@@ -551,7 +693,7 @@ const ClientDetail: React.FC = () => {
                     })}
                     {docRows.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-gray-400">No document requirements set.</td>
+                        <td colSpan={6} className="text-center py-8 text-gray-400">No document requirements set.</td>
                       </tr>
                     )}
                   </tbody>
@@ -681,6 +823,74 @@ const ClientDetail: React.FC = () => {
             <Button onClick={handleSendCorrection} disabled={sendingCorrection}>
               {sendingCorrection ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
               Send to client portal + Outbox
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit client</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editForm.email}
+                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-staff">Assigned staff</Label>
+              <Input
+                id="edit-staff"
+                value={editForm.assigned_staff}
+                onChange={e => setEditForm(f => ({ ...f, assigned_staff: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={v => setEditForm(f => ({ ...f, status: v as Client['status'] }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                  <SelectItem value="complete">Complete</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={savingEdit}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={savingEdit}>
+              {savingEdit ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>

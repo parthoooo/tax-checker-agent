@@ -89,6 +89,15 @@ export async function submitDocumentsForReview(
     .eq('id', clientId);
   if (clientErr) throw clientErr;
 
+  const { data: unlockRow } = await supabase
+    .from('clients')
+    .select('year_upload_unlocks')
+    .eq('id', clientId)
+    .maybeSingle();
+  const unlocks = ((unlockRow as { year_upload_unlocks?: string[] } | null)?.year_upload_unlocks ?? [])
+    .filter(y => y !== taxYear);
+  await supabase.from('clients').update({ year_upload_unlocks: unlocks }).eq('id', clientId);
+
   await logActivity({
     client_id: clientId,
     actor: params.actorName,
@@ -609,6 +618,78 @@ export async function resetClientDocuments(clientId: string): Promise<DocReq[]> 
     .catch(() => {});
 
   return requirements;
+}
+
+export type ClientInfoUpdate = {
+  name?: string;
+  email?: string;
+  phone?: string | null;
+  assigned_staff?: string | null;
+  assigned_preparer?: string | null;
+  status?: Client['status'];
+  reminder_cadence_days?: number;
+};
+
+export async function updateClientInfo(
+  clientId: string,
+  updates: ClientInfoUpdate,
+): Promise<Client> {
+  const { data, error } = await supabase
+    .from('clients')
+    .update({
+      ...updates,
+      last_activity: new Date().toISOString(),
+    })
+    .eq('id', clientId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function collectClientStoragePaths(clientId: string): Promise<string[]> {
+  const paths = new Set<string>();
+
+  const { data: uploads } = await supabase
+    .from('document_uploads')
+    .select('storage_path')
+    .eq('client_id', clientId);
+  for (const upload of uploads ?? []) {
+    if (upload.storage_path) paths.add(upload.storage_path);
+  }
+
+  async function walk(prefix: string): Promise<void> {
+    const { data: items } = await supabase.storage.from('documents').list(prefix, { limit: 1000 });
+    if (!items?.length) return;
+    for (const item of items) {
+      const fullPath = `${prefix}/${item.name}`;
+      if (item.id) {
+        paths.add(fullPath);
+      } else {
+        await walk(fullPath);
+      }
+    }
+  }
+
+  await walk(`clients/${clientId}`);
+  return [...paths];
+}
+
+/** Admin: permanently remove client, all related DB rows (cascade), and storage files. */
+export async function deleteClientCompletely(clientId: string): Promise<void> {
+  const storagePaths = await collectClientStoragePaths(clientId);
+  if (storagePaths.length > 0) {
+    for (let i = 0; i < storagePaths.length; i += 100) {
+      const batch = storagePaths.slice(i, i + 100);
+      const { error: storageErr } = await supabase.storage.from('documents').remove(batch);
+      if (storageErr) {
+        console.warn('Storage cleanup partial failure:', storageErr.message);
+      }
+    }
+  }
+
+  const { error } = await supabase.from('clients').delete().eq('id', clientId);
+  if (error) throw error;
 }
 
 // ── Storage ────────────────────────────────────────────────────────────────
