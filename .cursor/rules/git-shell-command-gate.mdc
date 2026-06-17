@@ -1,0 +1,35 @@
+---
+description: Before running shell git write commands — stop and verify user approval
+alwaysApply: true
+---
+
+# Git shell command gate
+
+Before invoking the Shell tool with **any** of these commands, re-read `git-never-push-without-approval.mdc` and confirm approval:
+
+```
+git commit
+git push
+git merge
+git cherry-pick
+git rebase
+git reset
+git checkout -b   # only if user asked to create branch
+gh pr create
+gh pr merge
+gh repo sync
+```
+
+## If the shell command would push to main
+
+**Abort** unless the user's current message contains **`push to main`** or **`push main`**.
+
+## After fixing bugs
+
+Correct sequence:
+1. Fix code locally
+2. Report what changed
+3. Ask: "Commit on branch X? Push that branch? Open PR?"
+4. Wait
+
+**Wrong sequence:** fix → commit → push (without asking)

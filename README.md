@@ -36,6 +36,8 @@ npm i
 npm run dev
 ```
 
+**Git policy (this repo)** — no direct pushes to `main`; use branches + PRs. Install local hook: `npm run install-git-hooks`. See [GIT_WORKFLOW.md](./GIT_WORKFLOW.md).
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).

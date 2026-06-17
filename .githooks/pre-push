@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Blocks push to main/master unless ALLOW_MAIN_PUSH=1 (human emergency override).
+# Install: npm run install-git-hooks
+
+set -euo pipefail
+
+protected_regex='refs/heads/(main|master)$'
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" =~ $protected_regex ]]; then
+    if [[ "${ALLOW_MAIN_PUSH:-}" != "1" ]]; then
+      echo ""
+      echo "⛔ pre-push: direct push to main/master is blocked."
+      echo ""
+      echo "  Use a feature branch + PR instead."
+      echo "  Docs: GIT_WORKFLOW.md"
+      echo ""
+      echo "  Human override only (not for AI agents):"
+      echo "    ALLOW_MAIN_PUSH=1 git push origin main"
+      echo ""
+      exit 1
+    fi
+  fi
+done
+
+exit 0
