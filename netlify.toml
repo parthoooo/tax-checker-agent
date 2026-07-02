@@ -1,0 +1,10 @@
+# Netlify — Vite + React Router (SPA)
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Client-side routes (/dashboard, /portal, etc.) → index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
