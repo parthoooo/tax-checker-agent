@@ -72,40 +72,18 @@ export async function submitDocumentsForReview(
     taxYear?: string;
   },
 ): Promise<void> {
-  const now = new Date().toISOString();
   const taxYear = params.taxYear ?? CURRENT_TAX_YEAR;
 
-  const clientUpdates: Record<string, unknown> = {
-    last_activity: now,
-  };
-  if (taxYear === CURRENT_TAX_YEAR) {
-    clientUpdates.documents_submitted = params.uploadedCount;
-    clientUpdates.documents_required = params.requiredCount;
-    clientUpdates.status = 'complete';
-    clientUpdates.issues = 0;
-  }
-
-  const { error: clientErr } = await supabase
-    .from('clients')
-    .update(clientUpdates)
-    .eq('id', clientId);
-  if (clientErr) throw clientErr;
-
-  const { data: unlockRow } = await supabase
-    .from('clients')
-    .select('year_upload_unlocks')
-    .eq('id', clientId)
-    .maybeSingle();
-  const unlocks = ((unlockRow as { year_upload_unlocks?: string[] } | null)?.year_upload_unlocks ?? [])
-    .filter(y => y !== taxYear);
-  await supabase.from('clients').update({ year_upload_unlocks: unlocks }).eq('id', clientId);
-
-  await logActivity({
-    client_id: clientId,
-    actor: params.actorName,
-    actor_type: 'client',
-    action: `Submitted all ${taxYear} documents for preparer review`,
+  const { data, error } = await (supabase as any).rpc('client_submit_for_review', {
+    p_client_id: clientId,
+    p_tax_year: taxYear,
+    p_uploaded_count: params.uploadedCount,
+    p_required_count: params.requiredCount,
+    p_actor_name: params.actorName,
   });
+
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
 
   await notifyPreparerOfSubmission(clientId, {
     clientName: params.clientName,
