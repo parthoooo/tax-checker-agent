@@ -1,3 +1,4 @@
+import { supabase } from '@/lib/supabase';
 import {
   fetchDocumentRequirements,
   fetchDocumentUploads,
@@ -10,6 +11,8 @@ import {
   type ComparisonResult,
 } from '@/lib/documentComparison';
 import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
+
+export type AiReviewResult = ComparisonResult & { engine?: 'gemini' | 'mock' };
 
 /** Read-only YoY comparison — no flags or email drafts (for admin review UI). */
 export async function getDocumentComparison(clientId: string): Promise<ComparisonResult> {
@@ -39,8 +42,20 @@ async function persistComparisonAiStatuses(
   }
 }
 
-/** Admin Run AI Review: compare YoY, persist per-upload ai_status, return findings. */
-export async function runAdminAiReview(clientId: string): Promise<ComparisonResult> {
+/** Admin Run AI Review: Gemini PDF analysis + YoY compare (edge fn), with local fallback. */
+export async function runAdminAiReview(clientId: string): Promise<AiReviewResult> {
+  try {
+    const { data, error } = await supabase.functions.invoke('analyze-client-documents', {
+      body: { clientId, taxYear: CURRENT_TAX_YEAR },
+    });
+
+    if (!error && data?.verified) {
+      return data as AiReviewResult;
+    }
+  } catch {
+    // fallback below
+  }
+
   const [currentReqs, currentUploads, priorUploads, priorReqs] = await Promise.all([
     fetchDocumentRequirements(clientId, CURRENT_TAX_YEAR),
     fetchDocumentUploads(clientId, CURRENT_TAX_YEAR),
@@ -50,5 +65,5 @@ export async function runAdminAiReview(clientId: string): Promise<ComparisonResu
 
   const result = compareDocuments(currentReqs, currentUploads, priorUploads, priorReqs);
   await persistComparisonAiStatuses(currentReqs, currentUploads, result);
-  return result;
+  return { ...result, engine: 'mock' };
 }

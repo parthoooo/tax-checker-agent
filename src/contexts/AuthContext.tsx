@@ -6,6 +6,7 @@ import {
   fetchSignupRequestByAuthUser,
   upsertSignupRequest,
 } from '@/lib/signupRequests';
+import { DEMO_CLIENTS, DEMO_PASSWORD, DEMO_STAFF } from '@/lib/branding';
 
 export type UserRole = 'client' | 'admin' | 'preparer';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -25,7 +26,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  quickLogin: (role: 'admin' | 'preparer-shawn' | 'preparer-girik' | 'client' | 'client-sean' | 'client-girik') => Promise<void>;
+  quickLogin: (role: 'admin' | 'preparer1' | 'preparer2' | 'client' | 'client2' | 'client3') => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   isLoading: boolean;
@@ -39,15 +40,13 @@ export const useAuth = () => {
   return context;
 };
 
-const DEMO_PASSWORD = 'BMM-Demo-2026!';
-
 const DEMO_CREDENTIALS = {
-  admin:            { email: 'nick@brodermansoor.com',       password: DEMO_PASSWORD },
-  'preparer-shawn': { email: 'shawn@brodermansoor.com',      password: DEMO_PASSWORD },
-  'preparer-girik': { email: 'girik@brodermansoor.com',      password: DEMO_PASSWORD },
-  client:           { email: 'john.smith@email.com',         password: DEMO_PASSWORD },
-  'client-sean':    { email: 'sean.test@brodermansoor.com',  password: DEMO_PASSWORD },
-  'client-girik':   { email: 'girik.test@brodermansoor.com', password: DEMO_PASSWORD },
+  admin:      { email: DEMO_STAFF.admin.email,       password: DEMO_PASSWORD },
+  preparer1:  { email: DEMO_STAFF.preparer1.email,   password: DEMO_PASSWORD },
+  preparer2:  { email: DEMO_STAFF.preparer2.email,   password: DEMO_PASSWORD },
+  client:     { email: DEMO_CLIENTS.primary.email,   password: DEMO_PASSWORD },
+  client2:    { email: DEMO_CLIENTS.test2.email,     password: DEMO_PASSWORD },
+  client3:    { email: DEMO_CLIENTS.test3.email,     password: DEMO_PASSWORD },
 };
 
 function authProviderLabel(su: SupabaseUser): string {
@@ -58,9 +57,9 @@ function authProviderLabel(su: SupabaseUser): string {
 }
 
 const DEMO_STAFF_BY_EMAIL: Record<string, UserRole> = {
-  'nick@brodermansoor.com': 'admin',
-  'shawn@brodermansoor.com': 'preparer',
-  'girik@brodermansoor.com': 'preparer',
+  [DEMO_STAFF.admin.email]: 'admin',
+  [DEMO_STAFF.preparer1.email]: 'preparer',
+  [DEMO_STAFF.preparer2.email]: 'preparer',
 };
 
 function staffRoleFromAuth(su: SupabaseUser): UserRole | null {

@@ -198,7 +198,7 @@ begin
       email_change_token_new, recovery_token
     ) values (
       '00000000-0000-0000-0000-000000000000', v_admin_id, 'authenticated','authenticated',
-      'nick@brodermansoor.com', crypt('password123', gen_salt('bf')),
+      'nick@brodermansoor.com', extensions.crypt('password123', extensions.gen_salt('bf')),
       now(),
       '{"provider":"email","providers":["email"]}'::jsonb,
       '{"role":"admin","full_name":"Nick Muqtadir"}'::jsonb,
@@ -220,7 +220,7 @@ begin
       email_change_token_new, recovery_token
     ) values (
       '00000000-0000-0000-0000-000000000000', v_client_id, 'authenticated','authenticated',
-      'john.smith@email.com', crypt('password123', gen_salt('bf')),
+      'john.smith@email.com', extensions.crypt('password123', extensions.gen_salt('bf')),
       now(),
       '{"provider":"email","providers":["email"]}'::jsonb,
       jsonb_build_object('role','client','full_name','John Smith','client_id', v_john_client::text),

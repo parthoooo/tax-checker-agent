@@ -14,15 +14,15 @@ const DEFAULT_REQUIREMENTS = [
   { name: "Schedule C", doc_type: "sched-c" },
 ];
 
-const DEMO_PASSWORD = "BMM-Demo-2026!";
+const DEMO_PASSWORD = "TaxChecker-Demo-2026!";
 
 const DEMO_USERS = [
-  { email: "nick@brodermansoor.com",       password: DEMO_PASSWORD, full_name: "Nick Broder",   role: "admin" },
-  { email: "shawn@brodermansoor.com",      password: DEMO_PASSWORD, full_name: "Shawn Mansoor", role: "preparer" },
-  { email: "girik@brodermansoor.com",      password: DEMO_PASSWORD, full_name: "Girik Patel",   role: "preparer" },
-  { email: "john.smith@email.com",         password: DEMO_PASSWORD, full_name: "John Smith",    role: "client" },
-  { email: "sean.test@brodermansoor.com",  password: DEMO_PASSWORD, full_name: "Sean Test Client",  role: "client" },
-  { email: "girik.test@brodermansoor.com", password: DEMO_PASSWORD, full_name: "Girik Test Client", role: "client" },
+  { email: "admin@tax-checker.demo",     password: DEMO_PASSWORD, full_name: "Demo Admin",        role: "admin" },
+  { email: "preparer1@tax-checker.demo", password: DEMO_PASSWORD, full_name: "Alex Chen",         role: "preparer" },
+  { email: "preparer2@tax-checker.demo", password: DEMO_PASSWORD, full_name: "Jordan Lee",        role: "preparer" },
+  { email: "client1@tax-checker.demo",   password: DEMO_PASSWORD, full_name: "John Smith",        role: "client" },
+  { email: "client2@tax-checker.demo",   password: DEMO_PASSWORD, full_name: "Test Client Two",   role: "client" },
+  { email: "client3@tax-checker.demo",   password: DEMO_PASSWORD, full_name: "Test Client Three", role: "client" },
 ];
 
 const PRIOR_TAX_YEAR = "2024";

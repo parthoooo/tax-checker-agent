@@ -2,10 +2,12 @@ import {
   createDocumentUpload,
   replaceDocumentUpload,
   logActivity,
+  createAiFlag,
 } from '@/lib/db';
 import { magicLinkLogActivity, magicLinkUpsertUpload } from '@/lib/magicLinkDb';
 import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
 import { uploadDocumentToStorage } from '@/utils/uploadDocument';
+import { analyzeDocument, mapAnalysisToDbStatus } from '@/utils/analyzeDocument';
 
 export interface PendingDocumentSlot {
   requirementId: string;
@@ -22,6 +24,7 @@ export interface PersistClientDocumentPackageParams {
   actorName: string;
   sessionUserId?: string | null;
   magicLinkToken?: string;
+  existingFilenames?: string[];
 }
 
 export interface PersistClientDocumentPackageResult {
@@ -35,8 +38,21 @@ export async function persistClientDocumentPackage(
   const { clientId, taxYear, slots, actorName, sessionUserId, magicLinkToken } = params;
   const taxYearNum = parseInt(taxYear, 10);
   const documentNames: string[] = [];
+  const knownFilenames = [...(params.existingFilenames ?? [])];
 
   for (const slot of slots) {
+    const analysis = await analyzeDocument({
+      fileName: slot.file.name,
+      mimeType: slot.file.type,
+      requirementDocType: slot.docType,
+      clientId,
+      existingFilenames: knownFilenames,
+      expectedTaxYear: taxYear,
+      file: slot.file,
+    });
+
+    const aiStatus = mapAnalysisToDbStatus(analysis.aiStatus);
+
     const storagePath = `clients/${clientId}/${taxYear}/${slot.docType}/${slot.file.name.replace(/\s+/g, '_')}`;
     const stored = await uploadDocumentToStorage(
       slot.file,
@@ -58,11 +74,13 @@ export async function persistClientDocumentPackage(
       storage_path: stored.storagePath ?? storagePath,
       file_size: slot.file.size,
       mime_type: slot.file.type || null,
-      ai_status: 'pending' as const,
+      ai_status: aiStatus,
       tax_year: taxYear,
       is_prior_year: taxYear !== CURRENT_TAX_YEAR,
       uploaded_by: sessionUserId ?? null,
     };
+
+    let uploadId: string | undefined;
 
     if (magicLinkToken) {
       await magicLinkUpsertUpload(magicLinkToken, {
@@ -73,16 +91,32 @@ export async function persistClientDocumentPackage(
         storagePath: stored.storagePath ?? storagePath,
         fileSize: slot.file.size,
         mimeType: slot.file.type || null,
-        aiStatus: 'pending',
+        aiStatus,
         taxYear,
         isPriorYear: taxYear !== CURRENT_TAX_YEAR,
       });
     } else if (slot.existingUploadId) {
       await replaceDocumentUpload(slot.existingUploadId, uploadPayload);
+      uploadId = slot.existingUploadId;
     } else {
-      await createDocumentUpload(uploadPayload);
+      const created = await createDocumentUpload(uploadPayload);
+      uploadId = created?.id;
     }
 
+    if (aiStatus !== 'verified' && uploadId && !magicLinkToken) {
+      for (const issue of analysis.issues) {
+        await createAiFlag({
+          client_id: clientId,
+          upload_id: uploadId,
+          flag_type: issue.type === 'wrong-type' ? 'unexpected' : issue.type,
+          severity: issue.type === 'wrong-year' ? 'HIGH' : 'MEDIUM',
+          description: issue.message,
+          detected_by: 'Doc Classifier Agent',
+        });
+      }
+    }
+
+    knownFilenames.push(slot.file.name);
     documentNames.push(slot.documentName);
 
     const action = magicLinkToken

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { generateMagicToken, logActivity } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { magicUploadUrl } from '@/lib/branding';
 
 type Client    = Database['public']['Tables']['clients']['Row'];
 type DocReq    = Database['public']['Tables']['document_requirements']['Row'];
@@ -48,7 +49,7 @@ const MagicLinksPanel: React.FC<Props> = ({
   useEffect(() => { loadActiveToken(); }, [client.id]);
 
   const isActive = !!token && (!expiresAt || expiresAt > new Date());
-  const url = token ? `https://brodermansoor.buildyourai.consulting/upload/${token}` : '';
+  const url = token ? magicUploadUrl(token) : '';
 
   const handleGenerate = async () => {
     setGenerating(true);

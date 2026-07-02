@@ -11,6 +11,7 @@ import {
   type DefaultRequirement,
 } from './taxConfig';
 import { syncChecklistToProfession } from './clientPortalSettings';
+import { NOTIFY_EMAIL, emailSignature } from './branding';
 
 // Loosely-typed handle for insert/update call sites. RLS enforces safety.
 const supabase: any = typedSupabase;
@@ -57,7 +58,7 @@ export async function fetchClientByAuthUser(authUserId: string): Promise<Client 
 }
 
 /** Admin/preparer inbox for client submission notifications (demo). */
-export const PREPARER_NOTIFY_EMAIL = 'nick@brodermansoor.com';
+export const PREPARER_NOTIFY_EMAIL = NOTIFY_EMAIL;
 
 export async function submitDocumentsForReview(
   clientId: string,
@@ -155,7 +156,7 @@ export async function notifyPreparerOfSubmission(
       '',
       'Please review in the client portal.',
       '',
-      '— Broder Mansoor Portal',
+      emailSignature(),
     ].join('\n'),
     status: 'pending',
     type: 'outbox',

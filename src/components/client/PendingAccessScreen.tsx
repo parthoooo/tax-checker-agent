@@ -1,4 +1,5 @@
 import React from 'react';
+import { APP_NAME } from '@/lib/branding';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertCircle, Clock, Loader2, RefreshCw } from 'lucide-react';
@@ -36,7 +37,7 @@ const PendingAccessScreen: React.FC<PendingAccessScreenProps> = ({
           <p className="text-sm text-muted-foreground">
             {isRejected
               ? 'Your sign-up request was not approved. Contact your tax preparer if you believe this is an error.'
-              : `Thanks for signing up with ${email}. A Broder Mansoor administrator will review your account and assign access (client portal, preparer, or admin). You'll be able to upload documents once approved.`}
+              : `Thanks for signing up with ${email}. A ${APP_NAME} administrator will review your account and assign access (client portal, preparer, or admin). You'll be able to upload documents once approved.`}
           </p>
           {!isRejected && (
             <p className="text-xs text-muted-foreground">

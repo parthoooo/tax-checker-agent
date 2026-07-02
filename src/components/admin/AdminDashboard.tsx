@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { fetchClients, fetchAiFlags, resolveAiFlag, logActivity, fetchTimeThisWeek } from '@/lib/db';
 import { seedAllDemoData } from '@/lib/seedDemoData';
 import type { Database } from '@/lib/database.types';
+import { APP_NAME, FOOTER_TAGLINE, getPortalOrigin } from '@/lib/branding';
 
 type Client  = Database['public']['Tables']['clients']['Row'];
 type FlagRow = Database['public']['Tables']['ai_flags']['Row'] & {
@@ -147,9 +148,9 @@ const AdminDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div>
-              <h1 className="text-xl font-semibold text-blue-900">Broder Mansoor Muqtadir, Inc. | Tax Season 2024</h1>
+              <h1 className="text-xl font-semibold text-blue-900">{APP_NAME} | Tax Season 2025</h1>
               <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
-              <p className="text-xs text-gray-400 mt-0.5">Client Portal: brodermansoor.buildyourai.consulting</p>
+              <p className="text-xs text-gray-400 mt-0.5">Client Portal: {getPortalOrigin() || window.location.origin}</p>
             </div>
             <Button variant="outline" onClick={logout}>
               <LogOut className="w-4 h-4 mr-2" />Logout
@@ -316,7 +317,7 @@ const AdminDashboard: React.FC = () => {
         )}
       </main>
 
-      <footer className="py-4 text-center text-xs text-gray-400">Powered by SJ Innovation AI</footer>
+      <footer className="py-4 text-center text-xs text-gray-400">{FOOTER_TAGLINE}</footer>
 
       {selectedClient && <ClientDetailModal clientId={selectedClient} onClose={() => setSelectedClient(null)} />}
 

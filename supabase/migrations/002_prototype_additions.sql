@@ -91,7 +91,7 @@ begin
       email_change_token_new, recovery_token
     ) values (
       '00000000-0000-0000-0000-000000000000', v_shawn_id, 'authenticated', 'authenticated',
-      'shawn@brodermansoor.com', crypt('password123', gen_salt('bf')),
+      'shawn@brodermansoor.com', extensions.crypt('password123', extensions.gen_salt('bf')),
       now(),
       '{"provider":"email","providers":["email"]}'::jsonb,
       '{"role":"preparer","full_name":"Sean Walsh"}'::jsonb,
@@ -113,7 +113,7 @@ begin
       email_change_token_new, recovery_token
     ) values (
       '00000000-0000-0000-0000-000000000000', v_girik_id, 'authenticated', 'authenticated',
-      'girik@brodermansoor.com', crypt('password123', gen_salt('bf')),
+      'girik@brodermansoor.com', extensions.crypt('password123', extensions.gen_salt('bf')),
       now(),
       '{"provider":"email","providers":["email"]}'::jsonb,
       '{"role":"preparer","full_name":"Girik Sharma"}'::jsonb,

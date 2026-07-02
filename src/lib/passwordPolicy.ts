@@ -6,7 +6,7 @@ const WEAK_SUBSTRINGS = [
   'letmein',
   'welcome',
   'admin',
-  'broder',
+  'taxchecker',
 ];
 
 export const SIGNUP_PASSWORD_HINT =

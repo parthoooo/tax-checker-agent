@@ -1,5 +1,7 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+import { FIRM_NAME } from './branding';
+
 export type ValidationOutcome =
   | 'verified'
   | 'wrong-year'
@@ -190,7 +192,7 @@ export async function generateEmailDraft(
   await new Promise(r => setTimeout(r, 800));
 
   const firstName = clientName.split(' ')[0];
-  const firm = 'Broder Mansoor Muqtadir, Inc.';
+  const firm = FIRM_NAME;
   const count = missingDocs.length;
   const bulletList = count > 0
     ? missingDocs.map(d => `  • ${d}`).join('\n')
@@ -344,7 +346,7 @@ export function buildEmailDraftBody(
   preparer: string,
 ): { subject: string; body: string } {
   const firstName = clientName.split(' ')[0];
-  const firm = 'Broder Mansoor Muqtadir, Inc.';
+  const firm = FIRM_NAME;
 
   switch (result.outcome) {
     case 'wrong-year': {

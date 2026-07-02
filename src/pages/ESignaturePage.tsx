@@ -19,21 +19,25 @@ import {
   upsertSignatureRequest,
 } from '@/utils/signNowService';
 import type { SignatureRequest } from '@/utils/signNowService';
+import { DEMO_STAFF, FIRM_NAME, getPortalOrigin } from '@/lib/branding';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+const PREP1 = DEMO_STAFF.preparer1;
+const PREP2 = DEMO_STAFF.preparer2;
+
 const MOCK_CLIENTS = [
-  { slug: 'jsmith',     name: 'John Smith',      email: 'john.smith@email.com',      preparer: 'Girik',  preparerEmail: 'girik@brodermansoor.com' },
-  { slug: 'mbrown',     name: 'Michael Brown',   email: 'michael.brown@email.com',   preparer: 'Girik',  preparerEmail: 'girik@brodermansoor.com' },
-  { slug: 'sjohnson',   name: 'Sarah Johnson',   email: 'sarah.johnson@email.com',   preparer: 'Sean',   preparerEmail: 'shawn@brodermansoor.com' },
-  { slug: 'rchen',      name: 'Robert Chen',     email: 'robert.chen@email.com',     preparer: 'Girik',  preparerEmail: 'girik@brodermansoor.com' },
-  { slug: 'mrodriguez', name: 'Maria Rodriguez', email: 'maria.rodriguez@email.com', preparer: 'Sean',   preparerEmail: 'shawn@brodermansoor.com' },
+  { slug: 'jsmith',     name: 'John Smith',      email: 'john.smith@email.com',      preparer: PREP2.fullName, preparerEmail: PREP2.email },
+  { slug: 'mbrown',     name: 'Michael Brown',   email: 'michael.brown@email.com',   preparer: PREP2.fullName, preparerEmail: PREP2.email },
+  { slug: 'sjohnson',   name: 'Sarah Johnson',   email: 'sarah.johnson@email.com',   preparer: PREP1.fullName, preparerEmail: PREP1.email },
+  { slug: 'rchen',      name: 'Robert Chen',     email: 'robert.chen@email.com',     preparer: PREP2.fullName, preparerEmail: PREP2.email },
+  { slug: 'mrodriguez', name: 'Maria Rodriguez', email: 'maria.rodriguez@email.com', preparer: PREP1.fullName, preparerEmail: PREP1.email },
 ];
 
 const DOC_TYPES: { value: SignatureRequest['documentType']; label: string; nameTemplate: string }[] = [
   { value: 'form-8879',         label: 'Form 8879 — IRS e-file Authorization',  nameTemplate: 'Form 8879 — IRS e-file Authorization 2024' },
   { value: 'state-equivalent',  label: 'State e-file Authorization',             nameTemplate: 'NY State IT-370 e-file Authorization 2024' },
-  { value: 'engagement-letter', label: 'Engagement Letter',                      nameTemplate: '2024 Engagement Letter — Broder-Mansoor & Associates' },
+  { value: 'engagement-letter', label: 'Engagement Letter',                      nameTemplate: `2024 Engagement Letter — ${FIRM_NAME}` },
   { value: 'poa',               label: 'Power of Attorney',                      nameTemplate: 'IRS Form 2848 — Power of Attorney 2024' },
 ];
 
@@ -44,8 +48,8 @@ const MOCK_SEED: SignatureRequest[] = [
     clientEmail: 'john.smith@email.com',
     documentName: 'Form 8879 — IRS e-file Authorization 2024',
     documentType: 'form-8879',
-    preparer: 'Girik',
-    preparerEmail: 'girik@brodermansoor.com',
+    preparer: PREP2.fullName,
+    preparerEmail: PREP2.email,
     createdAt: new Date(Date.now() - 2 * 86400_000).toISOString(),
     expiresAt: new Date(Date.now() + 5 * 86400_000).toISOString(),
     status: 'pending',
@@ -56,8 +60,8 @@ const MOCK_SEED: SignatureRequest[] = [
     clientEmail: 'maria.rodriguez@email.com',
     documentName: 'NY State IT-370 e-file Authorization 2024',
     documentType: 'state-equivalent',
-    preparer: 'Sean',
-    preparerEmail: 'shawn@brodermansoor.com',
+    preparer: PREP1.fullName,
+    preparerEmail: PREP1.email,
     createdAt: new Date(Date.now() - 1 * 86400_000).toISOString(),
     expiresAt: new Date(Date.now() + 6 * 86400_000).toISOString(),
     status: 'pending',
@@ -66,10 +70,10 @@ const MOCK_SEED: SignatureRequest[] = [
     id: 'sig-003',
     clientName: 'Robert Chen',
     clientEmail: 'robert.chen@email.com',
-    documentName: '2024 Engagement Letter — Broder-Mansoor & Associates',
+    documentName: `2024 Engagement Letter — ${FIRM_NAME}`,
     documentType: 'engagement-letter',
-    preparer: 'Girik',
-    preparerEmail: 'girik@brodermansoor.com',
+    preparer: PREP2.fullName,
+    preparerEmail: PREP2.email,
     createdAt: new Date(Date.now() - 4 * 86400_000).toISOString(),
     expiresAt: new Date(Date.now() + 3 * 86400_000).toISOString(),
     status: 'pending',
@@ -80,8 +84,8 @@ const MOCK_SEED: SignatureRequest[] = [
     clientEmail: 'sarah.johnson@email.com',
     documentName: 'Form 8879 — IRS e-file Authorization 2024',
     documentType: 'form-8879',
-    preparer: 'Sean',
-    preparerEmail: 'shawn@brodermansoor.com',
+    preparer: PREP1.fullName,
+    preparerEmail: PREP1.email,
     createdAt: new Date(Date.now() - 5 * 86400_000).toISOString(),
     expiresAt: new Date(Date.now() + 2 * 86400_000).toISOString(),
     status: 'signed',
@@ -93,10 +97,10 @@ const MOCK_SEED: SignatureRequest[] = [
     id: 'sig-102',
     clientName: 'Michael Brown',
     clientEmail: 'michael.brown@email.com',
-    documentName: '2024 Engagement Letter — Broder-Mansoor & Associates',
+    documentName: `2024 Engagement Letter — ${FIRM_NAME}`,
     documentType: 'engagement-letter',
-    preparer: 'Girik',
-    preparerEmail: 'girik@brodermansoor.com',
+    preparer: PREP2.fullName,
+    preparerEmail: PREP2.email,
     createdAt: new Date(Date.now() - 9 * 86400_000).toISOString(),
     expiresAt: new Date(Date.now()).toISOString(),
     status: 'signed',
@@ -110,8 +114,8 @@ const MOCK_SEED: SignatureRequest[] = [
     clientEmail: 'john.smith@email.com',
     documentName: 'NY State IT-370 e-file Authorization 2023',
     documentType: 'state-equivalent',
-    preparer: 'Sean',
-    preparerEmail: 'shawn@brodermansoor.com',
+    preparer: PREP1.fullName,
+    preparerEmail: PREP1.email,
     createdAt: new Date(Date.now() - 12 * 86400_000).toISOString(),
     expiresAt: new Date(Date.now() - 5 * 86400_000).toISOString(),
     status: 'declined',
@@ -121,7 +125,7 @@ const MOCK_SEED: SignatureRequest[] = [
   },
 ];
 
-const SIGNING_BASE = 'https://brodermansoor.buildyourai.consulting/sign/';
+const signingBase = () => `${getPortalOrigin() || ''}/sign/`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -169,7 +173,7 @@ const PendingTab: React.FC<{
   const [voidTarget, setVoidTarget] = useState<string | null>(null);
 
   const copyLink = (id: string) => {
-    navigator.clipboard.writeText(`${SIGNING_BASE}${id}`)
+    navigator.clipboard.writeText(`${signingBase()}${id}`)
       .then(() => toast.success('Signing link copied to clipboard'))
       .catch(() => toast.error('Failed to copy'));
   };

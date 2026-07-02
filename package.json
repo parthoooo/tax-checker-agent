@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "install-git-hooks": "bash scripts/install-git-hooks.sh"
+    "install-git-hooks": "bash scripts/install-git-hooks.sh",
+    "setup:supabase": "bash scripts/setup-personal-supabase.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

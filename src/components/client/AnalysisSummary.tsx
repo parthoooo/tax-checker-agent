@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, AlertTriangle, FileWarning, XCircle } from 'lucide-react';
 import type { ComparisonResult } from '@/lib/documentComparison';
+import type { AiReviewResult } from '@/lib/getDocumentComparison';
 import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from '@/lib/taxConfig';
 
 interface Props {
-  result: ComparisonResult | null;
+  result: ComparisonResult | AiReviewResult | null;
   loading?: boolean;
 }
 
@@ -42,6 +43,9 @@ const AnalysisSummary: React.FC<Props> = ({ result, loading }) => {
         </CardTitle>
         <p className="text-sm text-muted-foreground">
           Compared your {CURRENT_TAX_YEAR} uploads against last year&apos;s document set.
+          {'engine' in result && result.engine === 'gemini' && (
+            <Badge variant="secondary" className="ml-2 text-xs">Gemini Flash · PDF analysis</Badge>
+          )}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

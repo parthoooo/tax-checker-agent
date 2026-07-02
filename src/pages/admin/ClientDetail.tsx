@@ -193,7 +193,9 @@ const ClientDetail: React.FC = () => {
       setAnalysisResult(result);
       await reloadClientData({ keepAnalysis: true });
       toast.success('AI review complete', {
-        description: 'Checklist AI Result column updated from review findings.',
+        description: result.engine === 'gemini'
+          ? 'Gemini Flash analyzed PDF content and compared to prior year.'
+          : 'Review used filename rules. Set GEMINI_API_KEY on Supabase for real PDF analysis.',
       });
     } catch (err: any) {
       toast.error('AI review failed', { description: err?.message });

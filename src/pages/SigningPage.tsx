@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { CheckCircle2, FileText, Loader2, PenLine, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { loadSignatureRequests, upsertSignatureRequest } from '@/utils/signNowService';
+import { FIRM_NAME, FOOTER_TAGLINE } from '@/lib/branding';
 import type { SignatureRequest } from '@/utils/signNowService';
 
 // ─── Canvas Signature Component ───────────────────────────────────────────────
@@ -140,7 +141,7 @@ const InvalidState: React.FC<{ preparerEmail?: string }> = ({ preparerEmail }) =
         <p className="text-sm text-gray-500">This signature request is invalid or has expired.</p>
         <p className="text-sm text-gray-500">Please contact your tax preparer.</p>
         {preparerEmail && <p className="text-sm font-medium text-blue-700">{preparerEmail}</p>}
-        <p className="text-xs text-gray-400 mt-4">Broder-Mansoor & Associates · Powered by SJ Innovation AI</p>
+        <p className="text-xs text-gray-400 mt-4">{FIRM_NAME} · {FOOTER_TAGLINE}</p>
       </CardContent>
     </Card>
   </div>
@@ -170,7 +171,7 @@ const ConfirmedState: React.FC<{ req: SignatureRequest }> = ({ req }) => (
           This confirmation has been sent to{' '}
           <span className="font-medium text-blue-700">{req.preparerEmail}</span>.
         </p>
-        <p className="text-xs text-gray-400 pt-2">Powered by SJ Innovation AI</p>
+        <p className="text-xs text-gray-400 pt-2">{FOOTER_TAGLINE}</p>
       </CardContent>
     </Card>
   </div>
@@ -186,7 +187,7 @@ const DeclinedState: React.FC<{ req: SignatureRequest }> = ({ req }) => (
           If this was a mistake, please contact your preparer at{' '}
           <span className="font-medium text-blue-700">{req.preparerEmail}</span>.
         </p>
-        <p className="text-xs text-gray-400 mt-4">Powered by SJ Innovation AI</p>
+        <p className="text-xs text-gray-400 mt-4">{FOOTER_TAGLINE}</p>
       </CardContent>
     </Card>
   </div>
@@ -291,10 +292,10 @@ const SigningPage: React.FC = () => {
       <div className="bg-[#0f1f3d] text-white px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold">Broder-Mansoor & Associates</h1>
+            <h1 className="text-lg font-bold">{FIRM_NAME}</h1>
             <p className="text-xs text-blue-200/70">Secure Document Signing Portal</p>
           </div>
-          <p className="text-xs text-blue-200/60">Powered by SJ Innovation AI</p>
+          <p className="text-xs text-blue-200/60">{FOOTER_TAGLINE}</p>
         </div>
       </div>
 
@@ -303,7 +304,7 @@ const SigningPage: React.FC = () => {
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Document Signature Request</h2>
           <p className="text-sm text-gray-500 mt-1">
-            <span className="font-medium text-gray-700">Broder-Mansoor & Associates</span> is requesting your signature on:
+            <span className="font-medium text-gray-700">{FIRM_NAME}</span> is requesting your signature on:
           </p>
         </div>
 

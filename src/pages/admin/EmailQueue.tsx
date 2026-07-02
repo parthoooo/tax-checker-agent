@@ -39,11 +39,11 @@ const EmailQueue: React.FC = () => {
   const [seeding, setSeeding] = useState(false);
 
   const DEMO_SCENARIOS: Array<{ missingDocs: string[]; preparer: string }> = [
-    { missingDocs: ['W-2 (Employer: Acme Corp)', '1099-INT (Fidelity)'], preparer: 'Sean Mansoor' },
-    { missingDocs: ['1099-NEC (Upwork)', '1098 Mortgage Statement', 'Schedule C'], preparer: 'Girik Manchanda' },
-    { missingDocs: ['W-2 (Goldman Sachs)'], preparer: 'Sean Mansoor' },
-    { missingDocs: ['K-1 Partnership Income', '1099-DIV (Vanguard)', '1099-INT (Schwab)', 'Schedule C'], preparer: 'Girik Manchanda' },
-    { missingDocs: ['1098 Mortgage Statement (Wells Fargo)', '1099-NEC'], preparer: 'Sean Mansoor' },
+    { missingDocs: ['W-2 (Employer: Acme Corp)', '1099-INT (Fidelity)'], preparer: 'Alex Chen' },
+    { missingDocs: ['1099-NEC (Upwork)', '1098 Mortgage Statement', 'Schedule C'], preparer: 'Jordan Lee' },
+    { missingDocs: ['W-2 (Goldman Sachs)'], preparer: 'Alex Chen' },
+    { missingDocs: ['K-1 Partnership Income', '1099-DIV (Vanguard)', '1099-INT (Schwab)', 'Schedule C'], preparer: 'Jordan Lee' },
+    { missingDocs: ['1098 Mortgage Statement (Wells Fargo)', '1099-NEC'], preparer: 'Alex Chen' },
   ];
 
   const handleSeedDemoEmails = async () => {

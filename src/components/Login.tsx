@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { formatAuthPasswordError, evaluateSignupPassword, validateSignupPassword } from '@/lib/passwordPolicy';
 import PasswordStrengthMeter from '@/components/auth/PasswordStrengthMeter';
+import { APP_NAME, APP_TAGLINE, DEMO_CLIENTS, DEMO_STAFF, FOOTER_TAGLINE } from '@/lib/branding';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -78,8 +79,8 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-blue-900">Broder Mansoor Muqtadir, Inc. AI</CardTitle>
-          <p className="text-muted-foreground text-sm">AI-Powered Tax Document Management</p>
+          <CardTitle className="text-2xl font-bold text-blue-900">{APP_NAME}</CardTitle>
+          <p className="text-muted-foreground text-sm">{APP_TAGLINE}</p>
         </CardHeader>
         <CardContent>
           <div className="flex rounded-lg border mb-4 p-1">
@@ -162,26 +163,26 @@ const Login: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-2">
             <Button type="button" variant="outline" className="h-12 border-2 border-blue-700 text-blue-800 hover:bg-blue-50 font-semibold text-xs" onClick={() => handleQuickLogin('admin')} disabled={isLoading}>
-              Nick (Admin)
+              {DEMO_STAFF.admin.shortLabel}
             </Button>
-            <Button type="button" variant="outline" className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs" onClick={() => handleQuickLogin('preparer-shawn')} disabled={isLoading}>
-              Sean (Preparer)
+            <Button type="button" variant="outline" className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs" onClick={() => handleQuickLogin('preparer1')} disabled={isLoading}>
+              {DEMO_STAFF.preparer1.shortLabel}
             </Button>
-            <Button type="button" variant="outline" className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs" onClick={() => handleQuickLogin('preparer-girik')} disabled={isLoading}>
-              Girik (Preparer)
+            <Button type="button" variant="outline" className="h-12 border-2 border-indigo-600 text-indigo-700 hover:bg-indigo-50 font-semibold text-xs" onClick={() => handleQuickLogin('preparer2')} disabled={isLoading}>
+              {DEMO_STAFF.preparer2.shortLabel}
             </Button>
             <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client')} disabled={isLoading}>
-              John (Client)
+              {DEMO_CLIENTS.primary.shortLabel}
             </Button>
-            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client-sean')} disabled={isLoading}>
-              Sean (Test Client)
+            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client2')} disabled={isLoading}>
+              {DEMO_CLIENTS.test2.shortLabel}
             </Button>
-            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client-girik')} disabled={isLoading}>
-              Girik (Test Client)
+            <Button type="button" variant="outline" className="h-12 border-2 border-green-600 text-green-700 hover:bg-green-50 font-semibold text-xs" onClick={() => handleQuickLogin('client3')} disabled={isLoading}>
+              {DEMO_CLIENTS.test3.shortLabel}
             </Button>
           </div>
 
-          <p className="text-xs text-center text-muted-foreground mt-6">Powered by SJ Innovation AI</p>
+          <p className="text-xs text-center text-muted-foreground mt-6">{FOOTER_TAGLINE}</p>
         </CardContent>
       </Card>
     </div>

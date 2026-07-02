@@ -10,11 +10,17 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Copy, Clock, CheckCircle2, FileText, PenLine, Mail, Users, Database, ArrowRight, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DEMO_STAFF,
+  FIRM_NAME,
+  FROM_EMAIL_LABEL,
+  getPortalOrigin,
+} from '@/lib/branding';
 
 const users = [
-  { name: 'Nick Muqtadir', email: 'nick@brodermansoor.com', role: 'Admin' },
-  { name: 'Shawn', email: 'shawn@brodermansoor.com', role: 'Staff' },
-  { name: 'Girik', email: 'girik@brodermansoor.com', role: 'Staff' },
+  { name: DEMO_STAFF.admin.fullName, email: DEMO_STAFF.admin.email, role: 'Admin' },
+  { name: DEMO_STAFF.preparer1.fullName, email: DEMO_STAFF.preparer1.email, role: 'Staff' },
+  { name: DEMO_STAFF.preparer2.fullName, email: DEMO_STAFF.preparer2.email, role: 'Staff' },
   { name: 'John Smith', email: 'john@email.com', role: 'Client' },
   { name: 'Michael Brown', email: 'mbrown@email.com', role: 'Client' },
   { name: 'Sarah Johnson', email: 'sjohnson@email.com', role: 'Client' },
@@ -32,7 +38,7 @@ const docTypes = [
 
 const AdminSettings: React.FC = () => {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [firmName, setFirmName] = useState('Broder Mansoor Muqtadir, Inc.');
+  const [firmName, setFirmName] = useState(FIRM_NAME);
 
   return (
     <PageShell>
@@ -208,7 +214,7 @@ const AdminSettings: React.FC = () => {
                       <p className="font-medium text-gray-800">📄 2024 Federal Tax Return — John Smith</p>
                       <p>Document: Form 1040 + Schedule C</p>
                       <p>Signer: John Smith &lt;john@email.com&gt;</p>
-                      <p>Sent by: girik@brodermansoor.com</p>
+                      <p>Sent by: {FROM_EMAIL_LABEL}</p>
                       <div className="mt-3 flex items-center gap-2">
                         <div className="h-7 flex-1 bg-blue-100 rounded flex items-center justify-center text-blue-700 font-medium text-xs">
                           Sign Here →
@@ -256,9 +262,9 @@ const AdminSettings: React.FC = () => {
                   </div>
                   <div className="space-y-3">
                     {[
-                      { name: 'Nick Muqtadir', email: 'nick@brodermansoor.com', role: 'Admin' },
-                      { name: 'Shawn', email: 'shawn@brodermansoor.com', role: 'Preparer' },
-                      { name: 'Girik', email: 'girik@brodermansoor.com', role: 'Preparer' },
+                      { name: DEMO_STAFF.admin.fullName, email: DEMO_STAFF.admin.email, role: 'Admin' },
+                      { name: DEMO_STAFF.preparer1.fullName, email: DEMO_STAFF.preparer1.email, role: 'Preparer' },
+                      { name: DEMO_STAFF.preparer2.fullName, email: DEMO_STAFF.preparer2.email, role: 'Preparer' },
                     ].map((person, i) => (
                       <div key={i} className="flex items-center gap-4 p-3 border rounded-lg">
                         <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold shrink-0">
@@ -325,9 +331,9 @@ const AdminSettings: React.FC = () => {
                 <div>
                   <Label>Portal URL</Label>
                   <div className="flex gap-2">
-                    <Input value="brodermansoor.buildyourai.consulting" readOnly />
+                    <Input value={getPortalOrigin() || 'http://localhost:8080'} readOnly />
                     <Button variant="outline" onClick={() => {
-                      navigator.clipboard.writeText('brodermansoor.buildyourai.consulting');
+                      navigator.clipboard.writeText(getPortalOrigin() || window.location.origin);
                       toast.success('Copied to clipboard');
                     }}><Copy className="w-4 h-4" /></Button>
                   </div>

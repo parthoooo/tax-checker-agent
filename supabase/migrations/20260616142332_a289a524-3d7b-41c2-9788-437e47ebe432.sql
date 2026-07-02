@@ -62,6 +62,9 @@ as $$
 $$;
 
 -- 5. resolve_magic_link RPC for anon
+drop function if exists public.resolve_magic_link(text);
+drop function if exists public.resolve_magic_link(_token text);
+drop function if exists public.resolve_magic_link(p_token text);
 create or replace function public.resolve_magic_link(_token text)
 returns table (
   client_id uuid,

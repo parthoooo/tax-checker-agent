@@ -12,6 +12,7 @@ import { resolveMagicLink, submitDocumentsViaMagicLink } from '@/lib/magicLinkDb
 import { persistClientDocumentPackage } from '@/lib/clientDocumentSubmit';
 import { clearTaxYearReuploadGrant } from '@/lib/clientPortalSettings';
 import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
+import { APP_NAME, FOOTER_TAGLINE, FIRM_NAME, SUPPORT_EMAIL } from '@/lib/branding';
 import type { Database } from '@/lib/database.types';
 
 type DocReq = Database['public']['Tables']['document_requirements']['Row'];
@@ -145,8 +146,8 @@ const MagicLinkPortal: React.FC = () => {
             <p className="text-sm text-gray-500">
               This upload link is no longer valid. Please contact your tax preparer to receive a new link.
             </p>
-            <p className="text-sm font-medium text-blue-700">sj@brodermansoor.com</p>
-            <p className="text-xs text-gray-400 mt-4">Broder Mansoor Muqtadir, Inc. · Powered by SJ Innovation AI</p>
+            <p className="text-sm font-medium text-blue-700">{SUPPORT_EMAIL}</p>
+            <p className="text-xs text-gray-400 mt-4">{FIRM_NAME} · {FOOTER_TAGLINE}</p>
           </CardContent>
         </Card>
       </div>
@@ -158,10 +159,10 @@ const MagicLinkPortal: React.FC = () => {
       <div className="bg-[#0f1f3d] text-white px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold">Broder Mansoor Muqtadir, Inc.</h1>
+            <h1 className="text-lg font-bold">{FIRM_NAME}</h1>
             <p className="text-xs text-blue-200/70">Secure Document Upload Portal</p>
           </div>
-          <p className="text-xs text-blue-200/60">Powered by SJ Innovation AI</p>
+          <p className="text-xs text-blue-200/60">{FOOTER_TAGLINE}</p>
         </div>
       </div>
 
@@ -260,7 +261,7 @@ const MagicLinkPortal: React.FC = () => {
         </Card>
 
         <p className="text-xs text-center text-gray-400">
-          Questions? Contact your preparer at {client.assigned_preparer ?? 'sj@brodermansoor.com'}
+          Questions? Contact your preparer at {client.assigned_preparer ?? SUPPORT_EMAIL}
         </p>
       </div>
     </div>

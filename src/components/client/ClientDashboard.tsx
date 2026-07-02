@@ -18,6 +18,7 @@ import ClientActionRequired from './ClientActionRequired';
 import { fetchActiveClientCorrection } from '@/lib/clientCorrections';
 import { persistClientDocumentPackage } from '@/lib/clientDocumentSubmit';
 import { toast } from 'sonner';
+import { APP_NAME, FIRM_NAME, FOOTER_TAGLINE, emailSignature } from '@/lib/branding';
 import {
   fetchClientByAuthUser,
   fetchDocumentUploadsForYear,
@@ -277,6 +278,9 @@ const ClientDashboard: React.FC = () => {
         slots,
         actorName: user?.name ?? 'Client',
         sessionUserId: session?.user?.id ?? null,
+        existingFilenames: requiredDocs
+          .map(d => d.upload?.file_name)
+          .filter((n): n is string => Boolean(n)),
       });
 
       await submitDocumentsForReview(clientId, {
@@ -326,7 +330,7 @@ const ClientDashboard: React.FC = () => {
     if (!clientId) return;
     try {
       const subject = 'Action Required: Missing Tax Documents';
-      const body    = `Hi ${user?.name?.split(' ')[0]},\n\nYou are still missing: ${missingDocs.join(', ')}.\n\nPlease log in to your portal to upload them.\n\n— Broder Mansoor Muqtadir, Inc.`;
+      const body    = `Hi ${user?.name?.split(' ')[0]},\n\nYou are still missing: ${missingDocs.join(', ')}.\n\nPlease log in to your portal to upload them.\n\n${emailSignature()}`;
 
       await saveReminder({ client_id: clientId, sent_by: session?.user?.id ?? null, to_email: clientEmail, subject, body });
       await logActivity({ client_id: clientId, actor: user?.name ?? 'Client', actor_type: 'client', action: 'Sent self-reminder for missing documents' });
@@ -389,7 +393,7 @@ const ClientDashboard: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
-            <h1 className="text-xl font-semibold text-blue-900">Broder Mansoor Portal</h1>
+            <h1 className="text-xl font-semibold text-blue-900">{APP_NAME} Portal</h1>
             <Button variant="outline" onClick={logout}><LogOut className="w-4 h-4 mr-2" />Logout</Button>
           </div>
         </header>
@@ -429,7 +433,7 @@ const ClientDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div>
-              <h1 className="text-xl font-semibold text-blue-900">Broder Mansoor Muqtadir, Inc. Portal</h1>
+              <h1 className="text-xl font-semibold text-blue-900">{FIRM_NAME} Portal</h1>
               <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
             <Button variant="outline" onClick={logout}><LogOut className="w-4 h-4 mr-2" />Logout</Button>
@@ -680,7 +684,7 @@ const ClientDashboard: React.FC = () => {
         )}
       </main>
 
-      <footer className="py-4 text-center text-xs text-gray-400">Powered by SJ Innovation AI</footer>
+      <footer className="py-4 text-center text-xs text-gray-400">{FOOTER_TAGLINE}</footer>
     </div>
   );
 };

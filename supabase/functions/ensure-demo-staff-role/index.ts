@@ -8,9 +8,9 @@ const corsHeaders = {
 };
 
 const DEMO_STAFF_BY_EMAIL: Record<string, AppRole> = {
-  "nick@brodermansoor.com": "admin",
-  "shawn@brodermansoor.com": "preparer",
-  "girik@brodermansoor.com": "preparer",
+  "admin@tax-checker.demo": "admin",
+  "preparer1@tax-checker.demo": "preparer",
+  "preparer2@tax-checker.demo": "preparer",
 };
 
 Deno.serve(async (req) => {

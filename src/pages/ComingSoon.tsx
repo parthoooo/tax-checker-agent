@@ -1,4 +1,5 @@
 import React from 'react';
+import { FOOTER_TAGLINE } from '@/lib/branding';
 
 interface Props {
   title: string;
@@ -19,7 +20,7 @@ const ComingSoon: React.FC<Props> = ({ title }) => {
           <p className="text-sm text-gray-500 mt-2">Coming Soon</p>
         </div>
       </main>
-      <footer className="py-4 text-center text-xs text-gray-400">Powered by SJ Innovation AI</footer>
+      <footer className="py-4 text-center text-xs text-gray-400">{FOOTER_TAGLINE}</footer>
     </div>
   );
 };

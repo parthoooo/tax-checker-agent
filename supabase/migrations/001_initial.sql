@@ -1,11 +1,11 @@
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- UUID defaults (pgcrypto; uuid-ossp lives in extensions schema on hosted Supabase)
+create extension if not exists "pgcrypto" with schema extensions;
 
 -- ─────────────────────────────────────────
 -- 1. clients
 -- ─────────────────────────────────────────
 create table if not exists public.clients (
-  id                   uuid primary key default uuid_generate_v4(),
+  id                   uuid primary key default gen_random_uuid(),
   name                 text not null,
   email                text unique not null,
   phone                text,
@@ -23,7 +23,7 @@ create table if not exists public.clients (
 -- 2. document_requirements
 -- ─────────────────────────────────────────
 create table if not exists public.document_requirements (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   client_id   uuid not null references public.clients(id) on delete cascade,
   name        text not null,
   doc_type    text not null,
@@ -36,7 +36,7 @@ create table if not exists public.document_requirements (
 -- 3. document_uploads
 -- ─────────────────────────────────────────
 create table if not exists public.document_uploads (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   client_id       uuid not null references public.clients(id) on delete cascade,
   requirement_id  uuid references public.document_requirements(id) on delete set null,
   file_name       text not null,
@@ -52,7 +52,7 @@ create table if not exists public.document_uploads (
 -- 4. ai_flags
 -- ─────────────────────────────────────────
 create table if not exists public.ai_flags (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   client_id    uuid not null references public.clients(id) on delete cascade,
   upload_id    uuid references public.document_uploads(id) on delete set null,
   flag_type    text not null check (flag_type in ('wrong-year','duplicate','unexpected','missing')),
@@ -68,7 +68,7 @@ create table if not exists public.ai_flags (
 -- 5. activity_log
 -- ─────────────────────────────────────────
 create table if not exists public.activity_log (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   client_id   uuid references public.clients(id) on delete cascade,
   actor       text not null,
   actor_type  text not null check (actor_type in ('ai','staff','client')),
@@ -81,7 +81,7 @@ create table if not exists public.activity_log (
 -- 6. reminders
 -- ─────────────────────────────────────────
 create table if not exists public.reminders (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   client_id    uuid not null references public.clients(id) on delete cascade,
   sent_by      uuid references auth.users(id) on delete set null,
   to_email     text not null,

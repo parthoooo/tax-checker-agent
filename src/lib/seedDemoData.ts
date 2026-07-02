@@ -9,6 +9,7 @@
 import { supabase as typedSupabase } from './supabase';
 import { generateEmailDraft } from './aiSimulation';
 import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR } from './taxConfig';
+import { PREPARER_DISPLAY_NAMES } from './branding';
 
 const supabase: any = typedSupabase;
 
@@ -133,12 +134,12 @@ const SCENARIOS: Record<string, Scenario> = {
     ],
     emails: [
       { subject: 'Action Required: Wrong Tax Year — W2_2023_old.pdf',
-        missingDocs: ['2024 W-2 (re-upload)'], preparer: 'Sean Mansoor', status: 'pending' },
+        missingDocs: ['2024 W-2 (re-upload)'], preparer: 'Alex Chen', status: 'pending' },
       { subject: 'Welcome to the 2024 Tax Season',
         missingDocs: ['W-2', '1099-INT', '1099-NEC', '1098', 'K-1'],
-        preparer: 'Sean Mansoor', status: 'sent', sentMinutesAgo: 1440 * 4 },
+        preparer: 'Alex Chen', status: 'sent', sentMinutesAgo: 1440 * 4 },
       { subject: 'Reminder: K-1 Partnership Statement Outstanding',
-        missingDocs: ['K-1 Partnership'], preparer: 'Sean Mansoor', status: 'sent', sentMinutesAgo: 1440 },
+        missingDocs: ['K-1 Partnership'], preparer: 'Alex Chen', status: 'sent', sentMinutesAgo: 1440 },
     ],
     reminders: [
       { subject: 'Reminder: Missing Tax Documents',
@@ -171,7 +172,7 @@ const SCENARIOS: Record<string, Scenario> = {
       agentLine('Doc Classifier Agent', 'Verified 1098_mortgage_chase_2024.pdf — Chase Home Lending',            54),
       clientLine('John Smith', 'Uploaded random_receipt.jpg',                                                     45),
       agentLine('Doc Classifier Agent', 'random_receipt.jpg rejected — not a recognized tax form',                44),
-      staffLine('Sean Mansoor', 'Marked unexpected-file flag as resolved',                                        40),
+      staffLine('Alex Chen', 'Marked unexpected-file flag as resolved',                                        40),
       agentLine('Missing Doc Tracker Agent', 'John Smith still missing K-1 Partnership — reminder queued',        30),
     ],
     inputFileNames: ['W2_2024_GoldmanSachs.pdf', '1099-INT_fidelity_2024.pdf', '1099-NEC_2024_client.pdf', '1098_mortgage_chase_2024.pdf'],
@@ -211,11 +212,11 @@ const SCENARIOS: Record<string, Scenario> = {
     emails: [
       { subject: 'Action Required: Missing Tax Documents',
         missingDocs: ['W-2 (2024)', '1098 Mortgage Interest Statement', 'Schedule C', '1099-INT'],
-        preparer: 'Girik Patel', status: 'pending' },
+        preparer: 'Jordan Lee', status: 'pending' },
       { subject: 'Wrong Tax Year on W-2 Upload',
-        missingDocs: ['W-2 (2024)'], preparer: 'Girik Patel', status: 'pending' },
+        missingDocs: ['W-2 (2024)'], preparer: 'Jordan Lee', status: 'pending' },
       { subject: 'Reminder — 2024 Tax Filing Documents',
-        missingDocs: ['W-2', '1098', 'Schedule C'], preparer: 'Girik Patel',
+        missingDocs: ['W-2', '1098', 'Schedule C'], preparer: 'Jordan Lee',
         status: 'sent', sentMinutesAgo: 1440 * 2 },
     ],
     reminders: [
@@ -240,10 +241,10 @@ const SCENARIOS: Record<string, Scenario> = {
       clientLine('Michael Brown', 'Uploaded W2_2023_mbrown.pdf',                                                 1440 * 2),
       agentLine('Doc Classifier Agent', 'Wrong year detected on W2_2023_mbrown.pdf — needs 2024',                1440 * 2 - 2),
       agentLine('Follow-up Sender Agent', 'Drafted wrong-year correction email',                                  1440 * 2 - 3),
-      staffLine('Girik Patel', 'Sent reminder email to mbrown@email.com',                                        1440 * 2),
+      staffLine('Jordan Lee', 'Sent reminder email to mbrown@email.com',                                        1440 * 2),
       clientLine('Michael Brown', 'Uploaded receipt_unrelated.png',                                              1440),
       agentLine('Doc Classifier Agent', 'receipt_unrelated.png rejected — not a recognized form',                1439),
-      staffLine('Girik Patel', 'Resolved unexpected-file flag (receipt)',                                         120),
+      staffLine('Jordan Lee', 'Resolved unexpected-file flag (receipt)',                                         120),
       clientLine('Michael Brown', 'Uploaded 1098_mortgage_2024_mb.pdf',                                           90),
       agentLine('Doc Classifier Agent', 'Verified 1098_mortgage_2024_mb.pdf — Wells Fargo, confidence 96%',       89),
       agentLine('Missing Doc Tracker Agent', 'Michael Brown missing W-2/Schedule C/1099-INT — escalating',        45),
@@ -274,11 +275,11 @@ const SCENARIOS: Record<string, Scenario> = {
     ],
     emails: [
       { subject: 'All documents received — thank you!',
-        missingDocs: [], preparer: 'Sean Mansoor',
+        missingDocs: [], preparer: 'Alex Chen',
         status: 'sent', sentMinutesAgo: 480 },
       { subject: 'Welcome to the 2024 Tax Season',
         missingDocs: ['W-2', '1098', 'Schedule C', '1099-INT'],
-        preparer: 'Sean Mansoor', status: 'sent', sentMinutesAgo: 1440 * 6 },
+        preparer: 'Alex Chen', status: 'sent', sentMinutesAgo: 1440 * 6 },
     ],
     reminders: [
       { subject: 'Welcome — Secure upload link inside',
@@ -301,8 +302,8 @@ const SCENARIOS: Record<string, Scenario> = {
       agentLine('Missing Doc Tracker Agent', 'Sarah Johnson checklist complete — all 4 docs verified ✅',         598),
       clientLine('Sarah Johnson', 'Uploaded extra_donation_receipt.pdf',                                          540),
       agentLine('Doc Classifier Agent', 'extra_donation_receipt.pdf — informational only, flagged',               539),
-      staffLine('Sean Mansoor', 'Reviewed all documents — input sheet verified, ready for filing',                480),
-      staffLine('Sean Mansoor', 'Marked donation receipt flag as resolved',                                        60),
+      staffLine('Alex Chen', 'Reviewed all documents — input sheet verified, ready for filing',                480),
+      staffLine('Alex Chen', 'Marked donation receipt flag as resolved',                                        60),
     ],
     inputFileNames: ['W2_2024_NYCDeptEducation.pdf', '1098_mortgage_chase_2024.pdf', 'Schedule_C_2024_complete.pdf', '1099-INT_ally_2024.pdf'],
   },
@@ -341,12 +342,12 @@ const SCENARIOS: Record<string, Scenario> = {
     emails: [
       { subject: 'Heads Up: Duplicate Document Uploaded',
         missingDocs: ['W-2 (2024)', '1099-NEC', 'Schedule C'],
-        preparer: 'Girik Patel', status: 'pending' },
+        preparer: 'Jordan Lee', status: 'pending' },
       { subject: 'Action Required: Wrong Tax Year — W-2',
-        missingDocs: ['W-2 (2024)'], preparer: 'Girik Patel', status: 'pending' },
+        missingDocs: ['W-2 (2024)'], preparer: 'Jordan Lee', status: 'pending' },
       { subject: 'Reminder — 2024 Tax Filing Documents',
         missingDocs: ['W-2', '1099-NEC', 'Schedule C'],
-        preparer: 'Girik Patel', status: 'sent', sentMinutesAgo: 1440 * 3 },
+        preparer: 'Jordan Lee', status: 'sent', sentMinutesAgo: 1440 * 3 },
     ],
     reminders: [
       { subject: 'Tax Filing Reminder',
@@ -374,8 +375,8 @@ const SCENARIOS: Record<string, Scenario> = {
       agentLine('Doc Classifier Agent', 'Wrong year on old_w2_2022.pdf — 2022 detected',                        209),
       clientLine('Robert Chen', 'Uploaded irrelevant_paystub.pdf',                                              205),
       agentLine('Doc Classifier Agent', 'irrelevant_paystub.pdf — not a required form, rejected',               204),
-      staffLine('Girik Patel', 'Resolved paystub flag',                                                          200),
-      staffLine('Girik Patel', 'Sent reminder email to rchen@email.com',                                         180),
+      staffLine('Jordan Lee', 'Resolved paystub flag',                                                          200),
+      staffLine('Jordan Lee', 'Sent reminder email to rchen@email.com',                                         180),
       agentLine('Missing Doc Tracker Agent', 'Robert Chen missing W-2/1099-NEC/Schedule C',                      120),
     ],
     inputFileNames: ['K1_partnership_alpha_2024.pdf', '1098_mortgage_2024.pdf'],
@@ -407,9 +408,9 @@ const SCENARIOS: Record<string, Scenario> = {
     ],
     emails: [
       { subject: 'Duplicate 1099-DIV uploaded — please disregard',
-        missingDocs: [], preparer: 'Sean Mansoor', status: 'pending' },
+        missingDocs: [], preparer: 'Alex Chen', status: 'pending' },
       { subject: 'All required documents received',
-        missingDocs: [], preparer: 'Sean Mansoor',
+        missingDocs: [], preparer: 'Alex Chen',
         status: 'sent', sentMinutesAgo: 300 },
     ],
     reminders: [
@@ -470,10 +471,10 @@ const SCENARIOS: Record<string, Scenario> = {
     emails: [
       { subject: 'Reminder: 3 documents still outstanding',
         missingDocs: ['1099-INT', 'K-1 Partnership', '1098 Mortgage'],
-        preparer: 'Girik Patel', status: 'pending' },
+        preparer: 'Jordan Lee', status: 'pending' },
       { subject: 'Welcome to the 2024 Tax Season',
         missingDocs: ['W-2', '1099-NEC', '1099-INT', '1099-B', 'K-1', '1098'],
-        preparer: 'Girik Patel', status: 'sent', sentMinutesAgo: 1440 * 5 },
+        preparer: 'Jordan Lee', status: 'sent', sentMinutesAgo: 1440 * 5 },
     ],
     reminders: [
       { subject: 'Reminder: Outstanding Documents',
@@ -497,7 +498,7 @@ const SCENARIOS: Record<string, Scenario> = {
       agentLine('Doc Classifier Agent', 'Verified 1099-B_brokerage_2024.pdf — broker detected, 95%',             329),
       clientLine('David Kim', 'Uploaded random_scan.jpg',                                                        260),
       agentLine('Doc Classifier Agent', 'random_scan.jpg rejected — not a tax form',                             259),
-      staffLine('Girik Patel', 'Resolved unexpected-file flag (random scan)',                                    100),
+      staffLine('Jordan Lee', 'Resolved unexpected-file flag (random scan)',                                    100),
       agentLine('Missing Doc Tracker Agent', 'David Kim missing 1099-INT, K-1, 1098 — reminder queued',           60),
     ],
     inputFileNames: ['W2_2024_DavidKim.pdf', '1099-NEC_kim_2024.pdf', '1099-B_brokerage_2024.pdf'],
@@ -507,34 +508,34 @@ const SCENARIOS: Record<string, Scenario> = {
 // ── Extra clients (procedurally seeded) ──────────────────────────────────────
 
 const EXTRA_CLIENTS: Array<{ name: string; email: string; phone: string; assigned_staff: string; status: string }> = [
-  { name: 'Emily Davis',      email: 'emily.davis@email.com',      phone: '+1 (415) 555-0142', assigned_staff: 'Sean Mansoor', status: 'active' },
-  { name: 'James Wilson',     email: 'james.wilson@email.com',     phone: '+1 (415) 555-0188', assigned_staff: 'Girik Patel',  status: 'active' },
-  { name: 'Olivia Martinez',  email: 'olivia.martinez@email.com',  phone: '+1 (646) 555-0119', assigned_staff: 'Sean Mansoor', status: 'overdue' },
-  { name: 'William Anderson', email: 'william.anderson@email.com', phone: '+1 (646) 555-0201', assigned_staff: 'Girik Patel',  status: 'active' },
-  { name: 'Sophia Thomas',    email: 'sophia.thomas@email.com',    phone: '+1 (212) 555-0177', assigned_staff: 'Sean Mansoor', status: 'active' },
-  { name: 'Benjamin Taylor',  email: 'benjamin.taylor@email.com',  phone: '+1 (212) 555-0156', assigned_staff: 'Girik Patel',  status: 'active' },
-  { name: 'Ava Moore',        email: 'ava.moore@email.com',        phone: '+1 (929) 555-0133', assigned_staff: 'Sean Mansoor', status: 'overdue' },
-  { name: 'Lucas Jackson',    email: 'lucas.jackson@email.com',    phone: '+1 (929) 555-0192', assigned_staff: 'Girik Patel',  status: 'active' },
-  { name: 'Mia White',        email: 'mia.white@email.com',        phone: '+1 (347) 555-0124', assigned_staff: 'Sean Mansoor', status: 'active' },
-  { name: 'Henry Harris',     email: 'henry.harris@email.com',     phone: '+1 (347) 555-0167', assigned_staff: 'Girik Patel',  status: 'active' },
-  { name: 'Charlotte Martin', email: 'charlotte.martin@email.com', phone: '+1 (718) 555-0145', assigned_staff: 'Sean Mansoor', status: 'active' },
-  { name: 'Daniel Thompson',  email: 'daniel.thompson@email.com',  phone: '+1 (718) 555-0198', assigned_staff: 'Girik Patel',  status: 'overdue' },
-  { name: 'Amelia Garcia',    email: 'amelia.garcia@email.com',    phone: '+1 (917) 555-0152', assigned_staff: 'Sean Mansoor', status: 'active' },
-  { name: 'Matthew Lee',      email: 'matthew.lee@email.com',      phone: '+1 (917) 555-0178', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'Emily Davis',      email: 'emily.davis@email.com',      phone: '+1 (415) 555-0142', assigned_staff: 'Alex Chen', status: 'active' },
+  { name: 'James Wilson',     email: 'james.wilson@email.com',     phone: '+1 (415) 555-0188', assigned_staff: 'Jordan Lee',  status: 'active' },
+  { name: 'Olivia Martinez',  email: 'olivia.martinez@email.com',  phone: '+1 (646) 555-0119', assigned_staff: 'Alex Chen', status: 'overdue' },
+  { name: 'William Anderson', email: 'william.anderson@email.com', phone: '+1 (646) 555-0201', assigned_staff: 'Jordan Lee',  status: 'active' },
+  { name: 'Sophia Thomas',    email: 'sophia.thomas@email.com',    phone: '+1 (212) 555-0177', assigned_staff: 'Alex Chen', status: 'active' },
+  { name: 'Benjamin Taylor',  email: 'benjamin.taylor@email.com',  phone: '+1 (212) 555-0156', assigned_staff: 'Jordan Lee',  status: 'active' },
+  { name: 'Ava Moore',        email: 'ava.moore@email.com',        phone: '+1 (929) 555-0133', assigned_staff: 'Alex Chen', status: 'overdue' },
+  { name: 'Lucas Jackson',    email: 'lucas.jackson@email.com',    phone: '+1 (929) 555-0192', assigned_staff: 'Jordan Lee',  status: 'active' },
+  { name: 'Mia White',        email: 'mia.white@email.com',        phone: '+1 (347) 555-0124', assigned_staff: 'Alex Chen', status: 'active' },
+  { name: 'Henry Harris',     email: 'henry.harris@email.com',     phone: '+1 (347) 555-0167', assigned_staff: 'Jordan Lee',  status: 'active' },
+  { name: 'Charlotte Martin', email: 'charlotte.martin@email.com', phone: '+1 (718) 555-0145', assigned_staff: 'Alex Chen', status: 'active' },
+  { name: 'Daniel Thompson',  email: 'daniel.thompson@email.com',  phone: '+1 (718) 555-0198', assigned_staff: 'Jordan Lee',  status: 'overdue' },
+  { name: 'Amelia Garcia',    email: 'amelia.garcia@email.com',    phone: '+1 (917) 555-0152', assigned_staff: 'Alex Chen', status: 'active' },
+  { name: 'Matthew Lee',      email: 'matthew.lee@email.com',      phone: '+1 (917) 555-0178', assigned_staff: 'Jordan Lee',  status: 'active' },
 ];
 
 // Hand-written scenario clients — must also be auto-created if missing,
 // otherwise only whoever is in seed.sql ever gets seeded.
 const SCENARIO_CLIENTS: Array<{ name: string; email: string; phone: string; assigned_staff: string; status: string }> = [
-  { name: 'John Smith',       email: 'john.smith@email.com',       phone: '+1 (212) 555-0101', assigned_staff: 'Sean Mansoor', status: 'active' },
-  { name: 'Michael Brown',    email: 'michael.brown@email.com',    phone: '+1 (212) 555-0102', assigned_staff: 'Girik Patel',  status: 'overdue' },
-  { name: 'Sarah Johnson',    email: 'sarah.johnson@email.com',    phone: '+1 (415) 555-0103', assigned_staff: 'Sean Mansoor', status: 'complete' },
-  { name: 'Robert Chen',      email: 'robert.chen@email.com',      phone: '+1 (415) 555-0104', assigned_staff: 'Girik Patel',  status: 'active' },
-  { name: 'Maria Rodriguez',  email: 'maria.rodriguez@email.com',  phone: '+1 (646) 555-0105', assigned_staff: 'Sean Mansoor', status: 'complete' },
-  { name: 'David Kim',        email: 'david.kim@email.com',        phone: '+1 (646) 555-0106', assigned_staff: 'Girik Patel',  status: 'active' },
+  { name: 'John Smith',       email: 'john.smith@email.com',       phone: '+1 (212) 555-0101', assigned_staff: 'Alex Chen', status: 'active' },
+  { name: 'Michael Brown',    email: 'michael.brown@email.com',    phone: '+1 (212) 555-0102', assigned_staff: 'Jordan Lee',  status: 'overdue' },
+  { name: 'Sarah Johnson',    email: 'sarah.johnson@email.com',    phone: '+1 (415) 555-0103', assigned_staff: 'Alex Chen', status: 'complete' },
+  { name: 'Robert Chen',      email: 'robert.chen@email.com',      phone: '+1 (415) 555-0104', assigned_staff: 'Jordan Lee',  status: 'active' },
+  { name: 'Maria Rodriguez',  email: 'maria.rodriguez@email.com',  phone: '+1 (646) 555-0105', assigned_staff: 'Alex Chen', status: 'complete' },
+  { name: 'David Kim',        email: 'david.kim@email.com',        phone: '+1 (646) 555-0106', assigned_staff: 'Jordan Lee',  status: 'active' },
 ];
 
-const PREPARERS = ['Sean Mansoor', 'Girik Patel'];
+const PREPARERS = [...PREPARER_DISPLAY_NAMES];
 const AGENTS = ['Doc Classifier Agent', 'Duplicate Detector Agent', 'Missing Doc Tracker Agent', 'Follow-up Sender Agent'];
 
 function pick<T>(arr: T[], seed: number): T {

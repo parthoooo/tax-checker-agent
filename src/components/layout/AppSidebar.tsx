@@ -3,10 +3,11 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard, Users, Flag, ListChecks, Settings, User, LogOut,
-  FolderOpen, Menu, X, Mail, FileCode2, Bell, PenLine
+  FolderOpen, Menu, X, Mail, Bell, PenLine
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countPendingEmailDrafts, countPendingReminderDrafts } from '@/lib/db';
+import { APP_NAME, FOOTER_TAGLINE } from '@/lib/branding';
 
 interface NavItem {
   to: string;
@@ -46,7 +47,6 @@ const AppSidebar: React.FC = () => {
     { to: '/reminders',   label: 'Reminders',      icon: Bell, badge: pendingReminders },
     { to: '/activity',    label: 'Activity Log',   icon: ListChecks },
     { to: '/admin',       label: 'Admin',          icon: Settings, adminOnly: true },
-    { to: '/dev-docs',    label: 'Dev Docs',       icon: FileCode2, adminOnly: true },
     { to: '/profile',     label: 'Profile',        icon: User },
   ];
 
@@ -79,7 +79,7 @@ const AppSidebar: React.FC = () => {
   const SidebarBody = (
     <div className="flex flex-col h-full bg-[#0f1f3d] text-white w-64">
       <div className="px-6 py-6 border-b border-white/10">
-        <h2 className="text-lg font-bold tracking-tight">Broder Mansoor Muqtadir, Inc.</h2>
+        <h2 className="text-lg font-bold tracking-tight">{APP_NAME}</h2>
         {user.role !== 'client' && (
           <p className="text-xs text-blue-300/60 mt-1.5">
             {user.name} · {user.role === 'admin' ? 'Admin' : 'Preparer'}
@@ -125,7 +125,7 @@ const AppSidebar: React.FC = () => {
       </nav>
 
       <div className="px-6 py-4 border-t border-white/10 text-[11px] text-blue-200/60 text-center">
-        Powered by SJ Innovation AI
+        {FOOTER_TAGLINE}
       </div>
     </div>
   );
