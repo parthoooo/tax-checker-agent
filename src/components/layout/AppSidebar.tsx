@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard, Users, Flag, ListChecks, Settings, User, LogOut,
-  FolderOpen, Menu, X, Mail, Bell, PenLine
+  FolderOpen, Menu, X, Mail, Bell, FileDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countPendingEmailDrafts, countPendingReminderDrafts } from '@/lib/db';
@@ -41,7 +41,7 @@ const AppSidebar: React.FC = () => {
     { to: '/dashboard',   label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/clients',     label: 'All Clients',    icon: Users },
     { to: '/vault',       label: 'Document Vault', icon: FolderOpen },
-    { to: '/signatures',  label: 'E-Signatures',   icon: PenLine },
+    { to: '/staff/sample-docs', label: 'Sample PDFs', icon: FileDown },
     { to: '/flags',       label: 'AI Flags',       icon: Flag },
     { to: '/email-queue', label: 'Outbox',         icon: Mail, badge: pendingEmails },
     { to: '/reminders',   label: 'Reminders',      icon: Bell, badge: pendingReminders },
@@ -53,7 +53,7 @@ const AppSidebar: React.FC = () => {
   const preparerNav: NavItem[] = [
     { to: '/dashboard',   label: 'My Clients',     icon: Users },
     { to: '/vault',       label: 'Document Vault', icon: FolderOpen },
-    { to: '/signatures',  label: 'E-Signatures',   icon: PenLine },
+    { to: '/staff/sample-docs', label: 'Sample PDFs', icon: FileDown },
     { to: '/flags',       label: 'AI Flags',       icon: Flag },
     { to: '/email-queue', label: 'Outbox',         icon: Mail, badge: pendingEmails },
     { to: '/reminders',   label: 'Reminders',      icon: Bell, badge: pendingReminders },

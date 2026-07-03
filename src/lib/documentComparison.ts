@@ -41,6 +41,71 @@ export function normalizeComparisonResult(
   };
 }
 
+/** True when the client must fix uploads (missing, wrong year/type, or unexpected files). */
+export function comparisonHasClientIssues(
+  result: ComparisonResult | Partial<ComparisonResult>,
+): boolean {
+  const n = normalizeComparisonResult(result as Partial<ComparisonResult> & Record<string, unknown>);
+  return (
+    n.missing.length > 0 ||
+    n.wrongYear.length > 0 ||
+    n.wrongType.length > 0 ||
+    n.unexpected.length > 0
+  );
+}
+
+type ReuploadDocRow = {
+  id: string;
+  doc_type: string;
+  name: string;
+  upload?: { file_name: string; ai_status: string } | null;
+};
+
+/**
+ * Requirement IDs the client must re-upload after preparer unlock.
+ * Uses the active correction snapshot when present; otherwise flagged/rejected uploads.
+ */
+export function getReuploadRequirementIds(
+  requiredDocs: ReuploadDocRow[],
+  comparison: ComparisonResult | Partial<ComparisonResult> | null | undefined,
+): Set<string> {
+  const ids = new Set<string>();
+
+  if (comparison && comparisonHasClientIssues(comparison)) {
+    const n = normalizeComparisonResult(comparison as Partial<ComparisonResult> & Record<string, unknown>);
+
+    for (const m of n.missing) {
+      const doc = requiredDocs.find(d => d.doc_type === m.docType);
+      if (doc) ids.add(doc.id);
+    }
+
+    const addByFileName = (fileName: string) => {
+      const doc = requiredDocs.find(d => d.upload?.file_name === fileName);
+      if (doc) ids.add(doc.id);
+    };
+
+    for (const w of n.wrongYear) {
+      const doc = requiredDocs.find(d => d.name === w.requirementName) ?? requiredDocs.find(d => d.upload?.file_name === w.fileName);
+      if (doc) ids.add(doc.id);
+      else addByFileName(w.fileName);
+    }
+
+    for (const w of n.wrongType) addByFileName(w.fileName);
+    for (const u of n.unexpected) addByFileName(u.fileName);
+
+    return ids;
+  }
+
+  for (const doc of requiredDocs) {
+    const status = doc.upload?.ai_status;
+    if (status === 'flagged' || status === 'rejected') {
+      ids.add(doc.id);
+    }
+  }
+
+  return ids;
+}
+
 export interface AnalyzeDocumentResult {
   docType: string;
   docTypeSlug: string;

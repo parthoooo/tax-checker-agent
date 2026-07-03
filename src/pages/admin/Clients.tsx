@@ -26,7 +26,6 @@ import { toast } from 'sonner';
 import { deleteClientCompletely, fetchClients } from '@/lib/db';
 import { countPendingSignupRequests } from '@/lib/signupRequests';
 import { supabase } from '@/lib/supabase';
-import { seedAllDemoData } from '@/lib/seedDemoData';
 import type { Database } from '@/lib/database.types';
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -38,8 +37,6 @@ const Clients: React.FC = () => {
   const [filter, setFilter]     = useState<'all' | 'active' | 'overdue' | 'complete'>('all');
   const [addOpen, setAddOpen]   = useState(false);
   const [reminder, setReminder] = useState<Client | null>(null);
-  const [seeding, setSeeding]   = useState(false);
-  const [seedProgress, setSeedProgress] = useState('');
   const [pendingSignups, setPendingSignups] = useState(0);
 
   // Add-client form state
@@ -60,21 +57,6 @@ const Clients: React.FC = () => {
 
   const reload = () =>
     fetchClients().then(setClients).catch(() => toast.error('Failed to load clients'));
-
-  const handleSeedDemo = async () => {
-    setSeeding(true);
-    setSeedProgress('Starting...');
-    try {
-      await seedAllDemoData(msg => setSeedProgress(msg));
-      await reload();
-      toast.success('🎬 Demo data loaded!', { description: 'All 20 clients, documents, flags, emails, activity logs and time entries populated.' });
-    } catch (err: any) {
-      toast.error('Seeding failed', { description: err?.message });
-    } finally {
-      setSeeding(false);
-      setSeedProgress('');
-    }
-  };
 
   const filtered = clients.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
@@ -132,15 +114,6 @@ const Clients: React.FC = () => {
                   </Badge>
                 )}
               </Link>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleSeedDemo}
-              disabled={seeding}
-              className="gap-2"
-            >
-              {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🎬</span>}
-              {seeding ? (seedProgress || 'Loading…') : 'Load Demo Data'}
             </Button>
             <Button onClick={() => setAddOpen(true)}>
               <Plus className="w-4 h-4 mr-1" /> Add Client
@@ -267,7 +240,7 @@ const Clients: React.FC = () => {
                           <div className="space-y-2">
                             <p>No clients in the database yet.</p>
                             <p className="text-sm text-gray-400">
-                              Click <strong>Load Demo Data</strong> above to seed 20 demo clients, or add one manually.
+                              Use <strong>Add Client</strong> above to create your first client.
                             </p>
                           </div>
                         ) : (

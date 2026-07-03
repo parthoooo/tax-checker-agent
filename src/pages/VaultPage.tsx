@@ -465,13 +465,6 @@ const VaultPage: React.FC = () => {
             >
               Request Missing Docs
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => navigate(`/signatures?client=${selected.slug}`)}
-            >
-              Request Signature
-            </Button>
           </div>
 
           {/* File grid */}

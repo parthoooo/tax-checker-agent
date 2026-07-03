@@ -17,6 +17,8 @@ npx supabase@latest db push --yes
 echo "→ Deploying analyze-document + analyze-client-documents edge functions..."
 npx supabase@latest functions deploy analyze-document --no-verify-jwt
 npx supabase@latest functions deploy analyze-client-documents --no-verify-jwt
+npx supabase@latest functions deploy magic-link-upload --no-verify-jwt
+npx supabase@latest functions deploy magic-link-download --no-verify-jwt
 npx supabase@latest functions deploy seed-demo-users --no-verify-jwt
 
 echo "→ Seeding demo auth users..."
@@ -38,4 +40,3 @@ echo "  2. npx supabase secrets set GEMINI_API_KEY=your_key"
 echo ""
 echo "Done. Next steps:"
 echo "  1. npm run dev → login as admin@tax-checker.demo / TaxChecker-Demo-2026!"
-echo "  2. Dashboard → Load Demo Data"

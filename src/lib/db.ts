@@ -57,6 +57,47 @@ export async function fetchClientByAuthUser(authUserId: string): Promise<Client 
   return data;
 }
 
+export type OwnProfileUpdate = {
+  name: string;
+  phone: string | null;
+  clientUpdated: boolean;
+};
+
+/** Persist name/phone for the signed-in user (clients row + auth metadata). */
+export async function updateOwnProfile(params: {
+  name: string;
+  phone?: string | null;
+}): Promise<OwnProfileUpdate> {
+  const trimmedName = params.name.trim();
+  if (!trimmedName) throw new Error('Name is required');
+
+  const phone = params.phone?.trim() || null;
+
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !user) throw new Error('Not signed in');
+
+  const { error: authErr } = await supabase.auth.updateUser({
+    data: { full_name: trimmedName, name: trimmedName },
+  });
+  if (authErr) throw authErr;
+
+  const client = await fetchClientByAuthUser(user.id);
+  if (client) {
+    const { error } = await supabase
+      .from('clients')
+      .update({
+        name: trimmedName,
+        phone,
+        last_activity: new Date().toISOString(),
+      })
+      .eq('id', client.id)
+      .eq('auth_user_id', user.id);
+    if (error) throw error;
+  }
+
+  return { name: trimmedName, phone, clientUpdated: Boolean(client) };
+}
+
 /** Admin/preparer inbox for client submission notifications (demo). */
 export const PREPARER_NOTIFY_EMAIL = NOTIFY_EMAIL;
 
