@@ -5,8 +5,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Search, Users, FileText, AlertTriangle, CheckCircle, LogOut, Download, Mail, Clock, DollarSign, Loader2
+  Search, Users, FileText, AlertTriangle, CheckCircle, LogOut, Download, Mail, Clock, DollarSign, Loader2, BookOpen
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import ClientDetailModal from './ClientDetailModal';
 import AgentTeamBanner from '@/components/ai/AgentTeamBanner';
 import AgentActivityFeed from '@/components/ai/AgentActivityFeed';
@@ -126,9 +127,19 @@ const AdminDashboard: React.FC = () => {
               <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
               <p className="text-xs text-gray-400 mt-0.5">Client Portal: {getPortalOrigin() || window.location.origin}</p>
             </div>
-            <Button variant="outline" onClick={logout}>
-              <LogOut className="w-4 h-4 mr-2" />Logout
-            </Button>
+            <div className="flex items-center gap-2">
+              {user?.role === 'admin' && (
+                <Button variant="outline" asChild>
+                  <Link to="/admin/guide">
+                    <BookOpen className="w-4 h-4 mr-2" />
+                    Admin Guide
+                  </Link>
+                </Button>
+              )}
+              <Button variant="outline" onClick={logout}>
+                <LogOut className="w-4 h-4 mr-2" />Logout
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -153,6 +164,26 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Admin guide callout */}
+        {user?.role === 'admin' && (
+          <Card className="mb-6 border-blue-200 bg-gradient-to-r from-blue-50 to-white">
+            <CardContent className="py-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <BookOpen className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-blue-900">Admin Guide</p>
+                  <p className="text-sm text-blue-800/80">
+                    Step-by-step help for sign-ups, documents, AI review, and all three client profession types.
+                  </p>
+                </div>
+              </div>
+              <Button asChild>
+                <Link to="/admin/guide">Open guide</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <AgentTeamBanner />
         <AgentActivityFeed />

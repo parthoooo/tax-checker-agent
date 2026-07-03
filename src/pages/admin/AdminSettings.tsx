@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import PageShell from '@/components/layout/PageShell';
 import PageHeader from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,14 @@ const AdminSettings: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="⚙️ Admin Settings" />
+      <PageHeader
+        title="⚙️ Admin Settings"
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/admin/guide">Open Admin Guide</Link>
+          </Button>
+        }
+      />
 
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Tabs defaultValue="users">
