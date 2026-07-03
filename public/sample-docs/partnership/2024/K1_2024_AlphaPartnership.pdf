@@ -2,11 +2,11 @@
 1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
 2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
 3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<< /Font<< /F1 5 0 R >> >> >>endobj
-4 0 obj<< /Length 1255 >>stream
+4 0 obj<< /Length 1250 >>stream
 BT
 72 750 Td
 /F1 16 Tf
-(Schedule K-1 \(Form 1065\) - Tax Year 2025) Tj
+(Schedule K-1 \(Form 1065\) - Tax Year 2024) Tj
 0 -22 Td
 /F1 10 Tf
 (Partner's Share of Income, Deductions, Credits, etc.) Tj
@@ -42,22 +42,22 @@ BT
 (Part III - Partner's Share of Current Year Income) Tj
 0 -16 Td
 /F1 10 Tf
-(1   Ordinary business income \(loss\) ............... $18,920) Tj
+(1   Ordinary business income \(loss\) ............... $12,450) Tj
 0 -14 Td
 /F1 10 Tf
-(4c  Total guaranteed payments .................... $3,600) Tj
+(4c  Total guaranteed payments .................... $0) Tj
 0 -14 Td
 /F1 10 Tf
-(5   Interest income ............................... $210) Tj
+(5   Interest income ............................... $125) Tj
 0 -14 Td
 /F1 10 Tf
-(14  Self-employment earnings \(loss\) .............. $22,520) Tj
+(14  Self-employment earnings \(loss\) .............. $12,450) Tj
 0 -14 Td
 /F1 10 Tf
-(19  Distributions ................................. $12,500) Tj
+(19  Distributions ................................. $8,000) Tj
 0 -22 Td
 /F1 9 Tf
-(OMB No. 1545-0123 - Calendar year 2025) Tj
+(OMB No. 1545-0123 - Calendar year 2024) Tj
 ET
 endstream
 endobj
@@ -69,8 +69,8 @@ xref
 0000000056 00000 n 
 0000000111 00000 n 
 0000000233 00000 n 
-0000001538 00000 n 
+0000001533 00000 n 
 trailer<< /Size 6 /Root 1 0 R >>
 startxref
-1606
+1601
 %%EOF

@@ -28,7 +28,8 @@ const AnalysisSummary: React.FC<Props> = ({ result, loading }) => {
     result.missing.length > 0 ||
     result.wrongYear.length > 0 ||
     result.wrongType.length > 0 ||
-    result.unexpected.length > 0;
+    result.unexpected.length > 0 ||
+    (result.yoyNotes?.length ?? 0) > 0;
 
   return (
     <Card className={`mb-8 ${hasIssues ? 'border-amber-300' : 'border-green-300'}`}>
@@ -68,7 +69,7 @@ const AnalysisSummary: React.FC<Props> = ({ result, loading }) => {
               {result.missing.map(m => (
                 <li key={m.docType} className="text-sm">
                   {m.name}
-                  {m.hadIn2024 && (
+                  {m.hadInPriorYear && (
                     <span className="text-muted-foreground ml-1">(you had this in {PRIOR_TAX_YEAR})</span>
                   )}
                 </li>
@@ -108,6 +109,18 @@ const AnalysisSummary: React.FC<Props> = ({ result, loading }) => {
               {result.unexpected.map(u => (
                 <li key={u.fileName} className="text-sm">
                   {u.fileName} — {u.reason}
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {result.yoyNotes && result.yoyNotes.length > 0 && (
+          <Section icon={<AlertTriangle className="w-4 h-4 text-blue-600" />} title="Year-over-Year Notes" variant="yellow">
+            <ul className="space-y-1">
+              {result.yoyNotes.map((y, i) => (
+                <li key={`${y.fileName}-${i}`} className="text-sm">
+                  <span className="font-mono text-xs">{y.fileName}</span> — {y.note}
                 </li>
               ))}
             </ul>

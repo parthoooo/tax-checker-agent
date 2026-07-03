@@ -2,23 +2,23 @@
 1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
 2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
 3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<< /Font<< /F1 5 0 R >> >> >>endobj
-4 0 obj<< /Length 707 >>stream
+4 0 obj<< /Length 912 >>stream
 BT
 72 750 Td
 /F1 16 Tf
-(Form 1099-NEC Nonemployee Compensation - 2025) Tj
+(Schedule C \(Form 1040\) Profit or Loss From Business - 2024) Tj
 0 -22 Td
 /F1 10 Tf
-(Copy B - For Recipient) Tj
+(Sole Proprietorship) Tj
 0 -24 Td
 /F1 11 Tf
-(PAYER: Bright Path Consulting LLC) Tj
+(A  Principal business: Graphic Design Services) Tj
 0 -14 Td
 /F1 10 Tf
-(   EIN: 84-2917364) Tj
+(B  Business name: Smith Design Studio) Tj
 0 -14 Td
 /F1 10 Tf
-(   88 Broad Street, Newark, NJ 07102) Tj
+(C  Business code: 541430) Tj
 0 -20 Td
 /F1 10 Tf
 (Employee / Recipient: John Smith) Tj
@@ -30,16 +30,25 @@ BT
 (   TIN: XXX-XX-4567) Tj
 0 -22 Td
 /F1 11 Tf
-(Nonemployee compensation) Tj
+(Part I - Income) Tj
 0 -16 Td
 /F1 10 Tf
-(1  Nonemployee compensation ................ $62,750) Tj
+(1  Gross receipts or sales ................. $52,000) Tj
 0 -14 Td
 /F1 10 Tf
-(4  Federal income tax withheld ............. $0) Tj
+(7  Gross income ............................ $52,000) Tj
+0 -20 Td
+/F1 11 Tf
+(Part II - Expenses) Tj
+0 -16 Td
+/F1 10 Tf
+(28 Total expenses .......................... $18,400) Tj
+0 -14 Td
+/F1 10 Tf
+(31 Net profit or \(loss\) .................... $33,600) Tj
 0 -22 Td
 /F1 9 Tf
-(Tax Year: 2025  |  OMB No. 1545-0116) Tj
+(Tax Year: 2024) Tj
 ET
 endstream
 endobj
@@ -51,8 +60,8 @@ xref
 0000000056 00000 n 
 0000000111 00000 n 
 0000000233 00000 n 
-0000000989 00000 n 
+0000001194 00000 n 
 trailer<< /Size 6 /Root 1 0 R >>
 startxref
-1057
+1262
 %%EOF

@@ -35,8 +35,8 @@ export async function runDocumentAnalysis(
       client_id: clientId,
       upload_id: null,
       flag_type: 'missing',
-      severity: m.hadIn2024 ? 'HIGH' : 'MEDIUM',
-      description: `Missing ${CURRENT_TAX_YEAR} ${m.name}${m.hadIn2024 ? ` (client had this in ${PRIOR_TAX_YEAR})` : ''}.`,
+      severity: m.hadInPriorYear ? 'HIGH' : 'MEDIUM',
+      description: `Missing ${CURRENT_TAX_YEAR} ${m.name}${m.hadInPriorYear ? ` (client had this in ${PRIOR_TAX_YEAR})` : ''}.`,
       detected_by: 'Missing Doc Tracker Agent',
     });
   }
