@@ -16,10 +16,10 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import EmailQueue from "./pages/admin/EmailQueue";
 import RemindersPage from "./pages/RemindersPage";
 import VaultPage from "./pages/VaultPage";
+import SampleDocsPage from "./pages/admin/SampleDocsPage";
+import AdminGuidePage from "./pages/admin/AdminGuidePage";
 import Profile from "./pages/Profile";
 import MagicLinkPortal from "./pages/MagicLinkPortal";
-import ESignaturePage from "./pages/ESignaturePage";
-import SigningPage from "./pages/SigningPage";
 
 const App = () => (
   <>
@@ -30,9 +30,6 @@ const App = () => (
             {/* Public routes */}
             <Route path="/" element={<Index />} />
             <Route path="/upload/:token" element={<MagicLinkPortal />} />
-            <Route path="/sign/:id" element={<SigningPage />} />
-            <Route path="/sign/:id/confirmed" element={<SigningPage />} />
-            <Route path="/sign/:id/declined" element={<SigningPage />} />
 
             {/* Authenticated layout */}
             <Route
@@ -52,10 +49,11 @@ const App = () => (
               <Route path="/email-queue" element={<ProtectedRoute roles={['admin', 'preparer']}><EmailQueue /></ProtectedRoute>} />
               <Route path="/reminders" element={<ProtectedRoute roles={['admin', 'preparer']}><RemindersPage /></ProtectedRoute>} />
               <Route path="/vault" element={<ProtectedRoute roles={['admin', 'preparer']}><VaultPage /></ProtectedRoute>} />
-              <Route path="/signatures" element={<ProtectedRoute roles={['admin', 'preparer']}><ESignaturePage /></ProtectedRoute>} />
+              <Route path="/staff/sample-docs" element={<ProtectedRoute roles={['admin', 'preparer']}><SampleDocsPage /></ProtectedRoute>} />
 
               {/* Admin only */}
               <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminSettings /></ProtectedRoute>} />
+              <Route path="/admin/guide" element={<ProtectedRoute roles={['admin']}><AdminGuidePage /></ProtectedRoute>} />
 
               {/* Client only */}
               <Route path="/portal" element={<ProtectedRoute roles={['client']}><ClientDashboard /></ProtectedRoute>} />

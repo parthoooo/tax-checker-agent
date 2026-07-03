@@ -5,16 +5,15 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Search, Users, FileText, AlertTriangle, CheckCircle, LogOut, Download, Mail, Clock, DollarSign, Loader2, PenLine
+  Search, Users, FileText, AlertTriangle, CheckCircle, LogOut, Download, Mail, Clock, DollarSign, Loader2, BookOpen
 } from 'lucide-react';
-import { loadSignatureRequests } from '@/utils/signNowService';
+import { Link } from 'react-router-dom';
 import ClientDetailModal from './ClientDetailModal';
 import AgentTeamBanner from '@/components/ai/AgentTeamBanner';
 import AgentActivityFeed from '@/components/ai/AgentActivityFeed';
 import ReminderModal from '@/components/common/ReminderModal';
 import { toast } from 'sonner';
 import { fetchClients, fetchAiFlags, resolveAiFlag, logActivity, fetchTimeThisWeek } from '@/lib/db';
-import { seedAllDemoData } from '@/lib/seedDemoData';
 import type { Database } from '@/lib/database.types';
 import { APP_NAME, FOOTER_TAGLINE, getPortalOrigin } from '@/lib/branding';
 
@@ -50,8 +49,6 @@ const AdminDashboard: React.FC = () => {
   const [reminderClient, setReminderClient] = useState<Client | null>(null);
 
   const [weekHours, setWeekHours]   = useState(0);
-  const [seeding, setSeeding]       = useState(false);
-  const [seedProgress, setSeedProgress] = useState('');
   const hours   = useCountUp(weekHours);
   const dollars = useCountUp(weekHours * 28);
 
@@ -59,21 +56,6 @@ const AdminDashboard: React.FC = () => {
     Promise.all([fetchClients(), fetchAiFlags(false), fetchTimeThisWeek()])
       .then(([c, f, hrs]) => { setClients(c); setFlags(f as FlagRow[]); setWeekHours(hrs); })
       .catch(() => toast.error('Failed to load dashboard data'));
-
-  const handleSeedDemo = async () => {
-    setSeeding(true);
-    setSeedProgress('Starting...');
-    try {
-      await seedAllDemoData(msg => setSeedProgress(msg));
-      await reload();
-      toast.success('🎬 Demo data loaded!', { description: 'All clients, documents, flags, emails and input sheets are now populated.' });
-    } catch (err: any) {
-      toast.error('Seeding failed', { description: err?.message });
-    } finally {
-      setSeeding(false);
-      setSeedProgress('');
-    }
-  };
 
   useEffect(() => {
     reload().finally(() => setLoading(false));
@@ -129,13 +111,6 @@ const AdminDashboard: React.FC = () => {
     : t === 'unexpected' ? '📂 Unnecessary File'
     : '📋 Missing Documents';
 
-  const sigStatus = (email: string) => {
-    const reqs = loadSignatureRequests();
-    const match = reqs.find(r => r.clientEmail.toLowerCase() === email.toLowerCase());
-    if (!match) return null;
-    return match.status;
-  };
-
   const flagActionLabel = (t: string) =>
     t === 'wrong-year' ? '📧 Send Correction Request'
     : t === 'duplicate' ? '🗑 Auto-Remove Duplicates'
@@ -152,9 +127,19 @@ const AdminDashboard: React.FC = () => {
               <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
               <p className="text-xs text-gray-400 mt-0.5">Client Portal: {getPortalOrigin() || window.location.origin}</p>
             </div>
-            <Button variant="outline" onClick={logout}>
-              <LogOut className="w-4 h-4 mr-2" />Logout
-            </Button>
+            <div className="flex items-center gap-2">
+              {user?.role === 'admin' && (
+                <Button variant="outline" asChild>
+                  <Link to="/admin/guide">
+                    <BookOpen className="w-4 h-4 mr-2" />
+                    Admin Guide
+                  </Link>
+                </Button>
+              )}
+              <Button variant="outline" onClick={logout}>
+                <LogOut className="w-4 h-4 mr-2" />Logout
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -179,6 +164,26 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Admin guide callout */}
+        {user?.role === 'admin' && (
+          <Card className="mb-6 border-blue-200 bg-gradient-to-r from-blue-50 to-white">
+            <CardContent className="py-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <BookOpen className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-blue-900">Admin Guide</p>
+                  <p className="text-sm text-blue-800/80">
+                    Step-by-step help for sign-ups, documents, AI review, and all three client profession types.
+                  </p>
+                </div>
+              </div>
+              <Button asChild>
+                <Link to="/admin/guide">Open guide</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <AgentTeamBanner />
         <AgentActivityFeed />
@@ -209,26 +214,6 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Demo Seed Banner */}
-        <div className="mb-8 rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold text-indigo-900 text-sm">🎬 Presentation Mode</p>
-            <p className="text-xs text-indigo-600 mt-0.5">
-              {seeding ? seedProgress : 'Populate every screen with realistic demo data — documents, flags, emails, input sheets, and activity logs for all 5 clients.'}
-            </p>
-          </div>
-          <Button
-            onClick={handleSeedDemo}
-            disabled={seeding}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shrink-0"
-          >
-            {seeding
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <span>🎬</span>}
-            {seeding ? 'Loading demo data…' : 'Load Demo Data'}
-          </Button>
-        </div>
 
         {/* Stats */}
         {loading ? (
@@ -265,7 +250,6 @@ const AdminDashboard: React.FC = () => {
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Issues</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Last Activity</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Signature</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Actions</th>
                       </tr>
                     </thead>
@@ -289,15 +273,6 @@ const AdminDashboard: React.FC = () => {
                             {c.issues > 0 ? <Badge variant="destructive">{c.issues} issues</Badge> : <span className="text-green-600 text-sm">No issues</span>}
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600">{new Date(c.last_activity).toLocaleDateString()}</td>
-                          <td className="py-3 px-4">
-                            {(() => {
-                              const s = sigStatus(c.email);
-                              if (s === 'signed') return <span className="flex items-center gap-1 text-green-700 text-xs font-medium"><PenLine className="w-3.5 h-3.5" />Signed</span>;
-                              if (s === 'pending') return <span className="flex items-center gap-1 text-amber-600 text-xs font-medium"><PenLine className="w-3.5 h-3.5" />Pending</span>;
-                              if (s === 'declined') return <span className="flex items-center gap-1 text-red-500 text-xs font-medium"><PenLine className="w-3.5 h-3.5" />Declined</span>;
-                              return <span className="text-gray-400 text-xs">Not sent</span>;
-                            })()}
-                          </td>
                           <td className="py-3 px-4">
                             <div className="flex gap-2">
                               <Button variant="outline" size="sm" onClick={() => setSelectedClient(c.id)}>View Details</Button>

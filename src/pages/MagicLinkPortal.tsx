@@ -1,134 +1,265 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
-  CheckCircle2, AlertCircle, Clock, Upload, FileText, Loader2, XCircle, X,
-} from 'lucide-react';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { XCircle, Loader2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
-import { resolveMagicLink, submitDocumentsViaMagicLink } from '@/lib/magicLinkDb';
+import {
+  getMagicLinkSignedUrl,
+  loadMagicLinkPortalSnapshot,
+  submitMagicLinkForReview,
+  type MagicLinkActiveCorrection,
+} from '@/lib/magicLinkDb';
 import { persistClientDocumentPackage } from '@/lib/clientDocumentSubmit';
-import { clearTaxYearReuploadGrant } from '@/lib/clientPortalSettings';
-import { CURRENT_TAX_YEAR } from '@/lib/taxConfig';
-import { APP_NAME, FOOTER_TAGLINE, FIRM_NAME, SUPPORT_EMAIL } from '@/lib/branding';
+import { computeClientPortalDocumentState, isValidPortalTaxYearForClient } from '@/lib/clientPortalDocumentState';
+import ClientActionRequired from '@/components/client/ClientActionRequired';
+import ClientPortalDocumentSection from '@/components/client/ClientPortalDocumentSection';
+import {
+  APP_NAME,
+  FOOTER_TAGLINE,
+  FIRM_NAME,
+  SUPPORT_EMAIL,
+} from '@/lib/branding';
+import {
+  BUSINESS_TYPE_LABELS,
+  CURRENT_TAX_YEAR,
+  getClientPortalTaxYears,
+  type BusinessType,
+} from '@/lib/taxConfig';
 import type { Database } from '@/lib/database.types';
+import type { PortalDocRow } from '@/lib/clientPortalDocumentState';
 
-type DocReq = Database['public']['Tables']['document_requirements']['Row'];
-type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
+type Client = Database['public']['Tables']['clients']['Row'];
 
-interface ReqWithUpload extends DocReq {
-  upload?: DocUpload;
-}
+const REFRESH_INTERVAL_MS = 15_000;
 
 const MagicLinkPortal: React.FC = () => {
   const { token } = useParams<{ token: string }>();
-  const [client, setClient] = useState<any>(null);
+  const [client, setClient] = useState<Client | null>(null);
   const [tokenExpired, setTokenExpired] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [requirements, setRequirements] = useState<ReqWithUpload[]>([]);
+  const [docs, setDocs] = useState<PortalDocRow[]>([]);
   const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
+  const [replaceIntentIds, setReplaceIntentIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [selectedTaxYear, setSelectedTaxYear] = useState<string>(CURRENT_TAX_YEAR);
+  const [yearLocked, setYearLocked] = useState(false);
+  const [yearLockReason, setYearLockReason] = useState<string | undefined>();
+  const [yearSubmitted, setYearSubmitted] = useState(false);
+  const [activeCorrection, setActiveCorrection] = useState<MagicLinkActiveCorrection | null>(null);
+  const loadRequestRef = useRef(0);
+  const selectedTaxYearRef = useRef(selectedTaxYear);
 
-  const reloadPortal = useCallback(async () => {
+  useEffect(() => {
+    selectedTaxYearRef.current = selectedTaxYear;
+  }, [selectedTaxYear]);
+
+  const loadPortal = useCallback(async (taxYear: string) => {
     if (!token) return;
-    const result = await resolveMagicLink(token);
-    if (result === null || result === 'expired') return;
-    setClient(result.client);
-    setSubmitted(result.client.status === 'complete');
-    const uploadsByReq = new Map(result.uploads.map(u => [u.requirement_id, u]));
-    setRequirements(result.requirements.map(req => ({
-      ...req,
-      upload: uploadsByReq.get(req.id),
-    })));
+
+    const requestId = ++loadRequestRef.current;
+    const isStale = () =>
+      requestId !== loadRequestRef.current
+      || taxYear !== selectedTaxYearRef.current;
+
+    try {
+      const snapshot = await loadMagicLinkPortalSnapshot(token, taxYear);
+      if (isStale()) return;
+
+      if (snapshot === null) {
+        setTokenExpired(true);
+        return;
+      }
+      if (snapshot === 'expired') {
+        setTokenExpired(true);
+        return;
+      }
+
+      setClient(snapshot.client);
+      setDocs(snapshot.docs);
+      setYearSubmitted(snapshot.yearSubmitted);
+      setYearLocked(snapshot.yearLocked);
+      setYearLockReason(snapshot.yearLockReason);
+      setActiveCorrection(snapshot.activeCorrection);
+    } catch (err: unknown) {
+      if (!isStale()) {
+        const message = err instanceof Error ? err.message : 'Please try again.';
+        toast.error('Could not load portal', { description: message });
+      }
+    } finally {
+      if (!isStale()) setLoading(false);
+    }
   }, [token]);
 
   useEffect(() => {
-    if (!token) { setLoading(false); return; }
-    resolveMagicLink(token).then(result => {
-      if (result === null) { setTokenExpired(true); setLoading(false); return; }
-      if (result === 'expired') { setTokenExpired(true); setLoading(false); return; }
-      setClient(result.client);
-      setSubmitted(result.client.status === 'complete');
-      const uploadsByReq = new Map(result.uploads.map(u => [u.requirement_id, u]));
-      setRequirements(result.requirements.map(req => ({
-        ...req,
-        upload: uploadsByReq.get(req.id),
-      })));
-    }).catch(() => setTokenExpired(true)).finally(() => setLoading(false));
-  }, [token]);
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setDocs([]);
+    setPendingFiles({});
+    setReplaceIntentIds(new Set());
+    loadPortal(selectedTaxYear);
+  }, [token, selectedTaxYear, loadPortal]);
 
-  const handleFileChange = (req: ReqWithUpload, file: File) => {
-    setPendingFiles(prev => ({ ...prev, [req.id]: file }));
+  useEffect(() => {
+    if (!token) return;
+
+    const refresh = () => {
+      if (document.visibilityState === 'visible') {
+        loadPortal(selectedTaxYearRef.current);
+      }
+    };
+
+    const interval = window.setInterval(refresh, REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [token, loadPortal]);
+
+  const handleFileSelected = (documentId: string, file: File) => {
+    setPendingFiles(prev => ({ ...prev, [documentId]: file }));
+    setReplaceIntentIds(prev => new Set(prev).add(documentId));
   };
 
-  const handleFileClear = (requirementId: string) => {
+  const handleFileClear = (documentId: string) => {
     setPendingFiles(prev => {
       const next = { ...prev };
-      delete next[requirementId];
+      delete next[documentId];
+      return next;
+    });
+    setReplaceIntentIds(prev => {
+      const next = new Set(prev);
+      next.delete(documentId);
       return next;
     });
   };
 
-  const requiredDocs = requirements.filter(r => r.required);
-  const totalRequired = requiredDocs.length;
-  const dbUploadedCount = requiredDocs.filter(r => r.upload).length;
-  const selectedCount = requiredDocs.filter(r => pendingFiles[r.id]).length;
-  const alreadySubmitted =
-    submitted && dbUploadedCount === totalRequired && totalRequired > 0;
-  const filledCount = alreadySubmitted ? dbUploadedCount : selectedCount;
-  const allSlotsFilled = totalRequired > 0 && (alreadySubmitted ? dbUploadedCount === totalRequired : selectedCount === totalRequired);
-  const pct = totalRequired > 0 ? Math.round((filledCount / totalRequired) * 100) : 0;
-  const missingNotSelected = alreadySubmitted
-    ? []
-    : requiredDocs.filter(r => !pendingFiles[r.id]);
+  const handleStartReplace = (documentId: string) => {
+    setReplaceIntentIds(prev => new Set(prev).add(documentId));
+  };
+
+  const requiredDocs = docs.filter(d => d.required);
+  const portalState = useMemo(
+    () => computeClientPortalDocumentState({
+      requiredDocs,
+      clientRecord: client,
+      selectedTaxYear,
+      yearLocked,
+      yearSubmitted,
+      activeCorrectionComparison: activeCorrection?.comparison,
+      pendingFiles,
+      replaceIntentIds,
+    }),
+    [
+      requiredDocs,
+      client,
+      selectedTaxYear,
+      yearLocked,
+      yearSubmitted,
+      activeCorrection?.comparison,
+      pendingFiles,
+      replaceIntentIds,
+    ],
+  );
+
+  const {
+    totalCount,
+    isCorrectionResubmitMode,
+    yearUnlockedForResubmit,
+    canSubmit,
+  } = portalState;
+
+  const availableYears = client
+    ? getClientPortalTaxYears(client).filter(y => isValidPortalTaxYearForClient(client, y))
+    : [CURRENT_TAX_YEAR];
+
+  const getSignedUrl = useCallback(
+    (storagePath: string) => (token ? getMagicLinkSignedUrl(token, storagePath) : Promise.resolve(null)),
+    [token],
+  );
 
   const handleSubmitForReview = async () => {
-    if (!token || !client || !allSlotsFilled || submitting || alreadySubmitted) return;
+    if (!token || !client || !canSubmit || submitting) return;
     setSubmitting(true);
     try {
       const slots = requiredDocs
-        .filter(r => pendingFiles[r.id])
-        .map(r => ({
-          requirementId: r.id,
-          docType: r.doc_type,
-          documentName: r.name,
-          file: pendingFiles[r.id],
-          existingUploadId: r.upload?.id,
+        .filter(d => pendingFiles[d.id])
+        .map(d => ({
+          requirementId: d.id,
+          docType: d.doc_type,
+          documentName: d.name,
+          file: pendingFiles[d.id],
+          existingUploadId: d.upload?.id,
         }));
 
-      await persistClientDocumentPackage({
+      const uploadedCountAfter = isCorrectionResubmitMode || yearUnlockedForResubmit
+        ? requiredDocs.filter(d => (pendingFiles[d.id] ? true : Boolean(d.upload))).length
+        : slots.length;
+
+      const { uploadedCount: persistedCount, documentNames } = await persistClientDocumentPackage({
         clientId: client.id,
-        taxYear: CURRENT_TAX_YEAR,
+        taxYear: selectedTaxYear,
         slots,
         actorName: client.name,
         magicLinkToken: token,
+        existingFilenames: requiredDocs
+          .map(d => d.upload?.file_name)
+          .filter((n): n is string => Boolean(n)),
       });
 
-      const result = await submitDocumentsViaMagicLink(token);
-      if (result.error || !result.ok) {
-        throw new Error(result.error ?? 'Submission failed');
-      }
-
-      await clearTaxYearReuploadGrant(client.id, CURRENT_TAX_YEAR).catch(() => {});
+      await submitMagicLinkForReview(token, {
+        taxYear: selectedTaxYear,
+        uploadedCount: (isCorrectionResubmitMode || yearUnlockedForResubmit) ? uploadedCountAfter : persistedCount,
+        requiredCount: totalCount,
+        actorName: client.name,
+        clientName: client.name,
+        clientEmail: client.email,
+        documentNames,
+      });
 
       setPendingFiles({});
-      setSubmitted(true);
-      setClient({ ...client, status: 'complete' });
-      await reloadPortal();
-      toast.success('Documents submitted for review', {
-        description: 'Your preparer has been notified. Thank you!',
-      });
-    } catch (err: any) {
-      toast.error('Submission failed', { description: err?.message ?? 'Please try again.' });
+      setReplaceIntentIds(new Set());
+      setActiveCorrection(null);
+      await loadPortal(selectedTaxYear);
+
+      toast.success(
+        (isCorrectionResubmitMode || yearUnlockedForResubmit) ? 'Corrections submitted for review' : 'Documents submitted for review',
+        {
+          description: (isCorrectionResubmitMode || yearUnlockedForResubmit)
+            ? `Your updated ${selectedTaxYear} file(s) were sent to your preparer.`
+            : `Your ${selectedTaxYear} package was sent to your preparer.`,
+        },
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Please try again.';
+      toast.error('Submission failed', { description: message });
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) {
+  const handleTaxYearChange = (year: string) => {
+    if (year === selectedTaxYear) return;
+    loadRequestRef.current += 1;
+    setSelectedTaxYear(year);
+  };
+
+  if (loading && !client) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -136,7 +267,7 @@ const MagicLinkPortal: React.FC = () => {
     );
   }
 
-  if (tokenExpired || !client) {
+  if (tokenExpired || !client || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="w-full max-w-md text-center">
@@ -154,219 +285,90 @@ const MagicLinkPortal: React.FC = () => {
     );
   }
 
+  const businessType = (client.business_type ?? 'freelancer') as BusinessType;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#0f1f3d] text-white px-6 py-4">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div>
             <h1 className="text-lg font-bold">{FIRM_NAME}</h1>
-            <p className="text-xs text-blue-200/70">Secure Document Upload Portal</p>
+            <p className="text-xs text-blue-200/70">{APP_NAME} · Secure Document Upload</p>
           </div>
-          <p className="text-xs text-blue-200/60">{FOOTER_TAGLINE}</p>
+          <p className="text-xs text-blue-200/60 hidden sm:block">{FOOTER_TAGLINE}</p>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 space-y-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Hi {client.name.split(' ')[0]},</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Select a file for each required {CURRENT_TAX_YEAR} document below, then submit when all slots are filled.
-            Files are uploaded when you click Submit for Review.
+            This portal stays in sync with your client account — any changes from your preparer appear here automatically.
           </p>
         </div>
 
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Document progress</span>
-              <span className="text-sm text-gray-500">
-                {filledCount} of {totalRequired} {alreadySubmitted ? 'submitted' : 'selected'}
-              </span>
-            </div>
-            <Progress value={pct} className="h-2" />
-            {allSlotsFilled && !alreadySubmitted && (
-              <p className="text-sm text-green-700 font-medium mt-2 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" /> All slots filled — ready to submit
-              </p>
-            )}
-            {alreadySubmitted && (
-              <p className="text-sm text-green-700 font-medium mt-2 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" /> Submitted for preparer review — thank you!
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-3">
-          {requiredDocs.map(req => (
-            <DocumentRow
-              key={req.id}
-              req={req}
-              pendingFile={pendingFiles[req.id] ?? null}
-              alreadySubmitted={alreadySubmitted}
-              onFileChange={handleFileChange}
-              onFileClear={handleFileClear}
-            />
-          ))}
-        </div>
-
-        {missingNotSelected.length > 0 && (
-          <Card className="border-amber-200 bg-amber-50">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-sm font-medium text-amber-800 mb-2">Still need a file for:</p>
-              <ul className="space-y-1">
-                {missingNotSelected.map(r => (
-                  <li key={r.id} className="text-sm text-amber-700 flex items-center gap-2">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    {r.name}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
+        {activeCorrection && (
+          <ClientActionRequired
+            comparison={activeCorrection.comparison}
+            staffMessage={activeCorrection.staff_message}
+            sentAt={activeCorrection.sent_at}
+            sentBy={activeCorrection.sent_by}
+          />
         )}
 
         <Card>
-          <CardContent className="pt-6 pb-6 text-center space-y-4">
-            {alreadySubmitted ? (
-              <>
-                <CheckCircle2 className="w-10 h-10 text-green-600 mx-auto" />
-                <h3 className="text-lg font-medium">Submitted for Review</h3>
-                <p className="text-sm text-muted-foreground">
-                  Your preparer will review your documents and contact you if anything else is needed.
-                </p>
-              </>
-            ) : (
-              <>
-                <h3 className="text-lg font-medium">Ready to Submit?</h3>
-                <p className="text-sm text-muted-foreground">
-                  Select a file for every required slot, then submit to send your documents to your preparer.
-                </p>
-                <Button
-                  size="lg"
-                  className="bg-green-600 hover:bg-green-700"
-                  disabled={!allSlotsFilled || submitting}
-                  onClick={handleSubmitForReview}
-                >
-                  {submitting ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Upload className="w-4 h-4 mr-2" />
-                  )}
-                  {submitting ? 'Submitting…' : 'Submit for Review'}
-                </Button>
-              </>
-            )}
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-2 min-w-[200px]">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Profession</p>
+                <Badge variant="secondary" className="text-sm py-1 px-3 h-10 flex items-center">
+                  {BUSINESS_TYPE_LABELS[businessType]}
+                </Badge>
+              </div>
+              <div className="space-y-2 min-w-[160px]">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tax year</p>
+                <Select value={selectedTaxYear} onValueChange={handleTaxYearChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableYears.map(y => (
+                      <SelectItem key={y} value={y}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Lock className="w-3 h-3" /> Profession is managed in your full client portal
+            </p>
           </CardContent>
         </Card>
 
-        <p className="text-xs text-center text-gray-400">
+        <ClientPortalDocumentSection
+          selectedTaxYear={selectedTaxYear}
+          loading={loading}
+          requiredDocs={requiredDocs}
+          portalState={portalState}
+          yearLocked={yearLocked}
+          yearLockReason={yearLockReason}
+          clientRecord={client}
+          pendingFiles={pendingFiles}
+          replaceIntentIds={replaceIntentIds}
+          submitting={submitting}
+          onFileSelected={handleFileSelected}
+          onFileClear={handleFileClear}
+          onStartReplace={handleStartReplace}
+          onSubmit={handleSubmitForReview}
+          showSelfReminder={false}
+          getSignedUrl={getSignedUrl}
+        />
+
+        <p className="text-xs text-center text-gray-400 pb-4">
           Questions? Contact your preparer at {client.assigned_preparer ?? SUPPORT_EMAIL}
         </p>
-      </div>
+      </main>
     </div>
-  );
-};
-
-interface DocumentRowProps {
-  req: ReqWithUpload;
-  pendingFile: File | null;
-  alreadySubmitted: boolean;
-  onFileChange: (req: ReqWithUpload, file: File) => void;
-  onFileClear: (requirementId: string) => void;
-}
-
-const DocumentRow: React.FC<DocumentRowProps> = ({
-  req,
-  pendingFile,
-  alreadySubmitted,
-  onFileChange,
-  onFileClear,
-}) => {
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const upload = req.upload;
-
-  const slotStatus = alreadySubmitted && upload
-    ? 'Submitted'
-    : pendingFile
-      ? 'Selected'
-      : 'Pending';
-
-  const statusColor =
-    slotStatus === 'Submitted' ? 'bg-green-100 text-green-700' :
-    slotStatus === 'Selected' ? 'bg-blue-100 text-blue-700' :
-    'bg-gray-100 text-gray-500';
-
-  return (
-    <Card>
-      <CardContent className="pt-4 pb-4">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 shrink-0">
-            {slotStatus === 'Submitted' ? (
-              <CheckCircle2 className="w-5 h-5 text-green-500" />
-            ) : slotStatus === 'Selected' ? (
-              <CheckCircle2 className="w-5 h-5 text-blue-500" />
-            ) : (
-              <Clock className="w-5 h-5 text-gray-400" />
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm text-gray-800">{req.name}</span>
-              <Badge variant="outline" className="text-xs">{req.tax_year}</Badge>
-              <Badge className={`text-xs ${statusColor}`}>{slotStatus}</Badge>
-            </div>
-
-            {alreadySubmitted && upload && (
-              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                <FileText className="w-3 h-3" />
-                {upload.file_name}
-              </p>
-            )}
-            {!alreadySubmitted && pendingFile && (
-              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                <FileText className="w-3 h-3" />
-                {pendingFile.name} · ready to submit
-              </p>
-            )}
-          </div>
-
-          {!alreadySubmitted && (
-            <div className="shrink-0 flex items-center gap-1">
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                className="hidden"
-                onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) onFileChange(req, f);
-                  e.target.value = '';
-                }}
-              />
-              {pendingFile && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onFileClear(req.id)}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant={pendingFile ? 'outline' : 'default'}
-                onClick={() => inputRef.current?.click()}
-              >
-                <Upload className="w-3.5 h-3.5 mr-1" />
-                {pendingFile ? 'Replace' : 'Select'}
-              </Button>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
   );
 };
 

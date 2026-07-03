@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import PageShell from '@/components/layout/PageShell';
 import PageHeader from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -8,12 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Copy, Clock, CheckCircle2, FileText, PenLine, Mail, Users, Database, ArrowRight, Lock } from 'lucide-react';
+import { Plus, Copy, Clock, Mail, Users, Database, ArrowRight, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DEMO_STAFF,
   FIRM_NAME,
-  FROM_EMAIL_LABEL,
   getPortalOrigin,
 } from '@/lib/branding';
 
@@ -42,7 +42,14 @@ const AdminSettings: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="⚙️ Admin Settings" />
+      <PageHeader
+        title="⚙️ Admin Settings"
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/admin/guide">Open Admin Guide</Link>
+          </Button>
+        }
+      />
 
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Tabs defaultValue="users">
@@ -50,7 +57,6 @@ const AdminSettings: React.FC = () => {
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="docs">Document Types</TabsTrigger>
             <TabsTrigger value="cch">CCH Integration</TabsTrigger>
-            <TabsTrigger value="signnow">SignNow E-Signature</TabsTrigger>
             <TabsTrigger value="outlook">Outlook</TabsTrigger>
             <TabsTrigger value="branding">Branding</TabsTrigger>
           </TabsList>
@@ -158,76 +164,6 @@ const AdminSettings: React.FC = () => {
                     <p className="text-xs text-gray-400 text-center">
                       Once credentials are provided, this integration activates within minutes.
                     </p>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* SignNow E-Signature */}
-          <TabsContent value="signnow">
-            <div className="space-y-4">
-              <Card className="border-l-4 border-l-blue-400">
-                <CardContent className="pt-5 pb-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                      <PenLine className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">Status: Integration ready to activate</p>
-                      <p className="text-xs text-gray-500 mt-0.5">SignNow account created — API credentials needed to go live</p>
-                    </div>
-                    <Badge className="ml-auto bg-blue-100 text-blue-700">Ready</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardContent className="pt-5 pb-5">
-                    <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-blue-500" /> E-Signature Workflow
-                    </h3>
-                    <div className="space-y-3">
-                      {[
-                        { step: '1', label: 'Return completed in CCH', desc: 'Preparer marks return ready for signature' },
-                        { step: '2', label: 'SignNow request auto-created', desc: 'Client receives email with secure signing link' },
-                        { step: '3', label: 'Client signs digitally', desc: 'IRS Form 8879 + state e-signature captured' },
-                        { step: '4', label: 'Preparer notified', desc: 'Activity log updated, return queued for filing' },
-                      ].map(({ step, label, desc }) => (
-                        <div key={step} className="flex gap-3 items-start">
-                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0">{step}</div>
-                          <div>
-                            <p className="text-sm font-medium">{label}</p>
-                            <p className="text-xs text-gray-500">{desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-5 pb-5 space-y-4">
-                    <h3 className="text-sm font-semibold">Sample Signature Request</h3>
-                    <div className="bg-gray-50 border rounded-lg p-4 space-y-2 text-xs text-gray-700">
-                      <p className="font-medium text-gray-800">📄 2024 Federal Tax Return — John Smith</p>
-                      <p>Document: Form 1040 + Schedule C</p>
-                      <p>Signer: John Smith &lt;john@email.com&gt;</p>
-                      <p>Sent by: {FROM_EMAIL_LABEL}</p>
-                      <div className="mt-3 flex items-center gap-2">
-                        <div className="h-7 flex-1 bg-blue-100 rounded flex items-center justify-center text-blue-700 font-medium text-xs">
-                          Sign Here →
-                        </div>
-                        <Badge className="bg-amber-100 text-amber-700">Awaiting</Badge>
-                      </div>
-                    </div>
-                    <Button
-                      className="w-full"
-                      onClick={() => toast.info('SignNow API credentials needed. Contact Nick.')}
-                    >
-                      <PenLine className="w-4 h-4 mr-2" /> Activate SignNow
-                    </Button>
                   </CardContent>
                 </Card>
               </div>

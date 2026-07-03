@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Bell, ChevronDown, ChevronUp, Loader2, Sparkles, XCircle, CheckCircle2 } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, Loader2, XCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -16,11 +16,8 @@ import {
   approveEmailDraft,
   dismissEmailDraft,
   updateEmailDraftBody,
-  fetchClients,
-  createEmailDraft,
   logActivity,
 } from '@/lib/db';
-import { generateEmailDraft } from '@/lib/aiSimulation';
 import type { Database } from '@/lib/database.types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -72,13 +69,6 @@ const DEFAULT_CLIENT_OVERRIDES: ClientOverride[] = [
   { clientName: 'James Wilson',    override: false, customCadence: 3, doNotRemind: false },
 ];
 
-const REMINDER_SCENARIOS: Array<{ missingDocs: string[]; preparer: string }> = [
-  { missingDocs: ['W-2', '1099-NEC', '1098 Mortgage Interest', 'Schedule C'], preparer: 'Girik' },
-  { missingDocs: ['1099-NEC', 'Schedule C'],                                   preparer: 'Sean' },
-  { missingDocs: ['W-2 (correct year — 2024 needed)'],                         preparer: 'Girik' },
-  { missingDocs: ['Schedule C'],                                                preparer: 'Sean' },
-];
-
 const LS_HISTORY   = 'rm_history';
 const LS_CADENCE   = 'rm_cadence';
 const LS_OVERRIDES = 'rm_overrides';
@@ -101,7 +91,6 @@ const PendingTab: React.FC<{
   const { user } = useAuth();
   const [drafts,   setDrafts]   = useState<ReminderDraft[]>([]);
   const [loading,  setLoading]  = useState(true);
-  const [seeding,  setSeeding]  = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [editing,  setEditing]  = useState<Record<string, string>>({});
 
@@ -167,35 +156,6 @@ const PendingTab: React.FC<{
     }
   };
 
-  const handleSeedDemoReminders = async () => {
-    setSeeding(true);
-    try {
-      const clients = await fetchClients();
-      const active = clients.filter(c => c.status !== 'complete').slice(0, 4);
-      await Promise.all(
-        active.map(async (client, i) => {
-          const scenario = REMINDER_SCENARIOS[i % REMINDER_SCENARIOS.length];
-          const body = await generateEmailDraft(client.name, scenario.missingDocs, scenario.preparer);
-          await createEmailDraft({
-            client_id:  client.id,
-            to_email:   client.email,
-            from_label: scenario.preparer,
-            subject:    `Action Required: Missing Tax Documents — ${client.name}`,
-            body,
-            status:     'pending',
-            type:       'reminder',
-          });
-        })
-      );
-      toast.success('Demo reminders generated', { description: `${active.length} AI-drafted reminders added` });
-      await load();
-    } catch (err: any) {
-      toast.error('Failed to seed demo reminders', { description: err?.message });
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   const toggleExpand = (id: string) => setExpanded(e => ({ ...e, [id]: !e[id] }));
 
   const startEdit = (d: ReminderDraft) => {
@@ -217,24 +177,11 @@ const PendingTab: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleSeedDemoReminders}
-          disabled={seeding}
-          className="gap-2"
-        >
-          {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          Seed Demo Reminders
-        </Button>
-      </div>
-
       {drafts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-gray-500">
           <Bell className="w-10 h-10 mb-3 text-gray-300" />
           <p className="font-medium">All caught up — no reminders pending approval.</p>
-          <p className="text-sm text-gray-400 mt-1">Use "Seed Demo Reminders" to generate examples.</p>
+          <p className="text-sm text-gray-400 mt-1">AI will draft reminders when clients are missing documents.</p>
         </div>
       ) : (
         drafts.map(d => {
