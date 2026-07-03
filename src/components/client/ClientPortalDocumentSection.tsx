@@ -135,7 +135,9 @@ const ClientPortalDocumentSection: React.FC<ClientPortalDocumentSectionProps> = 
           <p className="text-sm text-muted-foreground">
             {yearUnlockedForResubmit
               ? 'Review your uploaded files below. Preview or download each one, then replace only the documents you need to change.'
-              : isCorrectionResubmitMode
+              : alreadySubmitted
+                ? 'Your documents were submitted. Preview or download each file below. Contact your preparer if you need to upload a replacement.'
+                : isCorrectionResubmitMode
                 ? 'Upload a corrected file only for documents marked below. Other documents are already verified.'
                 : 'Select a file for each required document below, then submit when all slots are filled. Files are uploaded when you click Submit for Review. Refreshing the page before submitting will clear your selections.'}
           </p>
@@ -158,9 +160,9 @@ const ClientPortalDocumentSection: React.FC<ClientPortalDocumentSectionProps> = 
                 const isVerifiedUpload = doc.upload?.ai_status === 'verified';
                 const isReplacing = replaceIntentIds.has(doc.id);
                 const showExistingFileCard =
-                  yearUnlockedForResubmit
-                  && hasSubmittedUpload
-                  && (!isReplacing || needsCorrection);
+                  hasSubmittedUpload
+                  && !(isReplacing && !needsCorrection);
+                const allowReplaceOnCard = yearUnlockedForResubmit && !needsCorrection;
                 const showUploadZone =
                   !alreadySubmitted
                   && (
@@ -203,7 +205,13 @@ const ClientPortalDocumentSection: React.FC<ClientPortalDocumentSectionProps> = 
                               {!needsCorrection && !isReplacing ? ' (optional: replace if you need a new file)' : ''}
                             </p>
                           )}
-                          {alreadySubmitted && doc.upload && !verifiedNoChange && !yearUnlockedForResubmit && (
+                          {alreadySubmitted && doc.upload && !yearUnlockedForResubmit && (
+                            <p className="text-sm text-muted-foreground">
+                              Submitted: {doc.upload.file_name} on {new Date(doc.upload.uploaded_at).toLocaleDateString()}
+                              {' '}— use Preview or Download below. Contact your preparer to replace a file.
+                            </p>
+                          )}
+                          {alreadySubmitted && doc.upload && yearUnlockedForResubmit && !verifiedNoChange && !needsCorrection && !isReplacing && (
                             <p className="text-sm text-muted-foreground">
                               Submitted: {doc.upload.file_name} on {new Date(doc.upload.uploaded_at).toLocaleDateString()}
                             </p>
@@ -241,8 +249,8 @@ const ClientPortalDocumentSection: React.FC<ClientPortalDocumentSectionProps> = 
                           uploadedAt={doc.upload.uploaded_at}
                           aiStatus={doc.upload.ai_status}
                           storagePath={doc.upload.storage_path}
-                          allowReplace={!needsCorrection}
-                          onReplace={needsCorrection ? undefined : () => onStartReplace(doc.id)}
+                          allowReplace={allowReplaceOnCard}
+                          onReplace={allowReplaceOnCard ? () => onStartReplace(doc.id) : undefined}
                           getSignedUrl={getSignedUrl}
                         />
                       </div>

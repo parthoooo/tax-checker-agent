@@ -432,10 +432,7 @@ const ClientDetail: React.FC = () => {
     );
   }
 
-  // Active checklist for the current profession template (matches the client
-  // portal). Filtering here prevents leftover requirements from previously
-  // selected professions — kept only because they still have an uploaded file —
-  // from inflating the checklist (e.g. Employee showing 5 rows instead of 3).
+  // Match client portal: only rows for the active profession template.
   const businessType = (client.business_type ?? 'freelancer') as BusinessType;
   const checklistReqs = getClientPortalRequirements(requirements, businessType);
 
@@ -443,17 +440,6 @@ const ClientDetail: React.FC = () => {
     const upload = uploads.find(u => u.requirement_id === req.id);
     return { req, upload };
   });
-
-  // Files uploaded against requirements no longer part of the active checklist.
-  // Shown separately so admins can still preview/open them without affecting the
-  // checklist document count.
-  const checklistReqIds = new Set(checklistReqs.map(r => r.id));
-  const extraUploadRows = uploads
-    .filter(u => !u.requirement_id || !checklistReqIds.has(u.requirement_id))
-    .map(u => ({
-      upload: u,
-      req: requirements.find(r => r.id === u.requirement_id) ?? null,
-    }));
 
   const reuploadLockedYears = submittedYears.filter(
     y => !(client.year_upload_unlocks ?? []).includes(y),
@@ -791,62 +777,6 @@ const ClientDetail: React.FC = () => {
                 </table>
               </CardContent>
             </Card>
-
-            {extraUploadRows.length > 0 && (
-              <Card>
-                <CardContent className="pt-6 space-y-3">
-                  <div>
-                    <p className="text-sm font-medium">Additional uploaded documents</p>
-                    <p className="text-xs text-muted-foreground">
-                      Files uploaded for document types not in the current{' '}
-                      {BUSINESS_TYPE_LABELS[businessType]} checklist (kept from a previous profession
-                      selection). They do not count toward the checklist above.
-                    </p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-gray-50 text-left text-xs uppercase text-gray-500">
-                          <th className="py-2 px-4">Document</th>
-                          <th className="py-2 px-4">Year</th>
-                          <th className="py-2 px-4">File Name</th>
-                          <th className="py-2 px-4">Uploaded</th>
-                          <th className="py-2 px-4">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {extraUploadRows.map(({ upload, req }) => (
-                          <tr key={upload.id} className="border-b hover:bg-gray-50">
-                            <td className="py-2 px-4 font-medium">
-                              {req?.name ?? 'Uploaded file'}
-                            </td>
-                            <td className="py-2 px-4">{upload.tax_year ?? req?.tax_year ?? '—'}</td>
-                            <td className="py-2 px-4 text-gray-600 text-xs">{upload.file_name}</td>
-                            <td className="py-2 px-4 text-gray-500 text-xs">
-                              {new Date(upload.uploaded_at).toLocaleDateString()}
-                            </td>
-                            <td className="py-2 px-4">
-                              {upload.storage_path ? (
-                                <div className="flex gap-1">
-                                  <Button size="sm" variant="outline" onClick={() => handlePreviewFile(upload.storage_path)}>
-                                    <Eye className="w-3.5 h-3.5 mr-1" /> Preview
-                                  </Button>
-                                  <Button size="sm" variant="ghost" asChild>
-                                    <Link to={`/vault?client=${client.id}`}>
-                                      <FolderOpen className="w-3.5 h-3.5 mr-1" /> Vault
-                                    </Link>
-                                  </Button>
-                                </div>
-                              ) : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </TabsContent>
 
           {/* Input Sheet */}
