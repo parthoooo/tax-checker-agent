@@ -198,20 +198,45 @@ Use these after a client submits — run **Run AI Review** on Client Detail as s
 | `1099-NEC_2025.pdf` in W-2 slot | Wrong document type |
 
 ### Sample test files (download and upload)
-After running the dev server or deploying, download these from `/sample-docs/`:
 
-| File | URL path | Use for |
-|------|----------|---------|
-| `W2_2025_Goldman.pdf` | `/sample-docs/W2_2025_Goldman.pdf` | Verified W-2 upload |
-| `W2_2024_Goldman.pdf` | `/sample-docs/W2_2024_Goldman.pdf` | Wrong year flag |
-| `1099-NEC_2025.pdf` | `/sample-docs/1099-NEC_2025.pdf` | Wrong type (upload to W-2 slot) |
-| `BankStatement_Jan2025.pdf` | `/sample-docs/BankStatement_Jan2025.pdf` | Unexpected document flag |
-| `1098_2025_WellsFargo.pdf` | `/sample-docs/1098_2025_WellsFargo.pdf` | Verified 1098 upload |
-| `ScheduleC_2025.pdf` | `/sample-docs/ScheduleC_2025.pdf` | Verified Schedule C upload |
-| `K1_2025_AlphaPartnership.pdf` | `/sample-docs/K1_2025_AlphaPartnership.pdf` | Verified K-1 upload (if on checklist) |
+Demo persona: **John Smith** (Montclair, NJ). All forms use consistent payers across years for YoY testing.
 
-Local: `http://localhost:8080/sample-docs/W2_2025_Goldman.pdf`  
-Production: `https://brodermansoor.buildyourai.consulting/sample-docs/W2_2025_Goldman.pdf`
+**Three profession bundles** — each folder has a complete 2024 + 2025 set:
+
+| Profession | Docs required | Bundle path |
+|------------|---------------|-------------|
+| Employee (W-2) | 3 | `/sample-docs/employee/{2024\|2025}/` |
+| Freelancer / Self-employed | 4 | `/sample-docs/freelancer/{2024\|2025}/` |
+| Partnership / K-1 | 5 | `/sample-docs/partnership/{2024\|2025}/` |
+
+| Profession | Files in each year folder |
+|------------|---------------------------|
+| **Employee** | `W2_*_Goldman.pdf`, `1098_*_WellsFargo.pdf`, `1099-INT_*_Fidelity.pdf` |
+| **Freelancer** | W-2 + `1099-NEC_*_BrightPath.pdf`, `1098_*_WellsFargo.pdf`, `ScheduleC_*_SmithDesign.pdf` |
+| **Partnership** | Freelancer set + `K1_*_AlphaPartnership.pdf` |
+
+Regenerate all PDFs: `node scripts/generate-sample-tax-pdfs.mjs`
+
+**Flat files** (also copied to `/sample-docs/` root for quick links):
+
+| File | Use for |
+|------|---------|
+| `W2_2025_Goldman.pdf` | Verified W-2 upload |
+| `W2_2024_Goldman.pdf` | Wrong year flag (upload to 2025 slot) |
+| `1099-INT_2025_Fidelity.pdf` | Verified 1099-INT (employee checklist) |
+| `1099-NEC_2025_BrightPath.pdf` | Verified 1099-NEC (freelancer/partnership) |
+| `1099-NEC_2025.pdf` | Wrong type (upload to W-2 slot) |
+| `1098_2025_WellsFargo.pdf` | Verified 1098 |
+| `ScheduleC_2025_SmithDesign.pdf` | Verified Schedule C |
+| `K1_2025_AlphaPartnership.pdf` | Verified K-1 (partnership) |
+| `K1_2024_AlphaPartnership.pdf` | Prior-year K-1 / YoY compare |
+| `BankStatement_Jan2025.pdf` | Unexpected document flag |
+| `Receipt_OfficeSupply_2025.pdf` | Unexpected document flag |
+
+**YoY demo amounts** (2024 → 2025): W-2 wages $185,400 → $207,200; 1099-NEC $48,500 → $62,750; Schedule C net $33,600 → $46,850; K-1 ordinary income $12,450 → $18,920. Run AI Review after uploading both years to see variance notes.
+
+Local: `http://localhost:8080/sample-docs/partnership/2025/`  
+Production: `https://brodermansoor.buildyourai.consulting/sample-docs/partnership/2025/`
 
 ### Document replace
 After submit, clients cannot change files unless the preparer unlocks the tax year. Before submit, clients can clear and re-select files per slot. Admins enable prior tax years individually on Client Detail (stored in `clients.portal_enabled_years`); YoY AI review still compares **2025 vs 2024** only.

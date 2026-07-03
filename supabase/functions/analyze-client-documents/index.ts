@@ -9,11 +9,12 @@ const corsHeaders = {
 };
 
 interface ComparisonResult {
-  missing: { docType: string; name: string; hadIn2024: boolean }[];
+  missing: { docType: string; name: string; hadInPriorYear: boolean }[];
   wrongYear: { fileName: string; detectedYear: string; requirementName: string }[];
   wrongType: { fileName: string; expected: string; detected: string }[];
   unexpected: { fileName: string; reason: string }[];
   verified: { docType: string; fileName: string; name: string }[];
+  yoyNotes?: { docType: string; fileName: string; note: string }[];
   engine: "gemini" | "mock";
 }
 
@@ -86,6 +87,7 @@ Deno.serve(async (req) => {
       wrongType: [],
       unexpected: [],
       verified: [],
+      yoyNotes: [],
       engine: Deno.env.get("GEMINI_API_KEY") ? "gemini" : "mock",
     };
 
@@ -107,7 +109,7 @@ Deno.serve(async (req) => {
 
       if (!upload) {
         if (priorByDocType.has(req.doc_type)) {
-          result.missing.push({ docType: req.doc_type, name: req.name, hadIn2024: true });
+          result.missing.push({ docType: req.doc_type, name: req.name, hadInPriorYear: true });
           await admin.from("ai_flags").insert({
             client_id: clientId,
             upload_id: null,
@@ -161,6 +163,7 @@ Deno.serve(async (req) => {
       }
 
       for (const note of analysis.yoyNotes ?? []) {
+        result.yoyNotes!.push({ docType: req.doc_type, fileName: upload.file_name, note });
         await admin.from("ai_flags").insert({
           client_id: clientId,
           upload_id: upload.id,
@@ -198,12 +201,39 @@ Deno.serve(async (req) => {
       const hasReq = currentReqs.some((r: { doc_type: string; required: boolean }) =>
         r.doc_type === docType && r.required
       );
-      if (hasReq && !verifiedTypes.has(docType) && !result.missing.some((m) => m.docType === docType)) {
+      const hasUploadForType = currentReqs
+        .filter((r: { doc_type: string; required: boolean }) => r.doc_type === docType && r.required)
+        .some((r: { id: string }) =>
+          currentUploads.some((u: { requirement_id: string }) => u.requirement_id === r.id)
+        );
+      const hasOpenIssue =
+        result.wrongYear.some((w) => {
+          const req = currentReqs.find((r: { name: string }) => r.name === w.requirementName);
+          return req?.doc_type === docType;
+        }) ||
+        result.wrongType.some((w) => {
+          const upload = currentUploads.find((u: { file_name: string }) => u.file_name === w.fileName);
+          const req = currentReqs.find((r: { id: string }) => r.id === upload?.requirement_id);
+          return req?.doc_type === docType;
+        }) ||
+        result.unexpected.some((u) => {
+          const upload = currentUploads.find((up: { file_name: string }) => up.file_name === u.fileName);
+          const req = currentReqs.find((r: { id: string }) => r.id === upload?.requirement_id);
+          return req?.doc_type === docType;
+        });
+
+      if (
+        hasReq &&
+        !verifiedTypes.has(docType) &&
+        !hasUploadForType &&
+        !hasOpenIssue &&
+        !result.missing.some((m) => m.docType === docType)
+      ) {
         const req = currentReqs.find((r: { doc_type: string }) => r.doc_type === docType);
         result.missing.push({
           docType,
           name: req?.name ?? docType,
-          hadIn2024: true,
+          hadInPriorYear: true,
         });
       }
       void prior;

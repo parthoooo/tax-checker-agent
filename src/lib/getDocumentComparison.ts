@@ -7,6 +7,7 @@ import {
 } from '@/lib/db';
 import {
   compareDocuments,
+  normalizeComparisonResult,
   resolveUploadReviewStatus,
   type ComparisonResult,
 } from '@/lib/documentComparison';
@@ -49,8 +50,8 @@ export async function runAdminAiReview(clientId: string): Promise<AiReviewResult
       body: { clientId, taxYear: CURRENT_TAX_YEAR },
     });
 
-    if (!error && data?.verified) {
-      return data as AiReviewResult;
+    if (!error && data && Array.isArray(data.verified)) {
+      return { ...normalizeComparisonResult(data), engine: data.engine as 'gemini' | 'mock' | undefined };
     }
   } catch {
     // fallback below

@@ -1,7 +1,7 @@
 import { supabase as typedSupabase } from './supabase';
 import type { Database } from './database.types';
 import type { ComparisonResult } from './documentComparison';
-import { comparisonToEmailLabels } from './documentComparison';
+import { comparisonToEmailLabels, normalizeComparisonResult } from './documentComparison';
 import { createEmailDraft, logActivity } from './db';
 import { generateEmailDraft } from './aiSimulation';
 import { CURRENT_TAX_YEAR } from './taxConfig';
@@ -30,7 +30,9 @@ export async function fetchActiveClientCorrection(
 
   return {
     ...data,
-    comparison: data.comparison_snapshot as ComparisonResult,
+    comparison: normalizeComparisonResult(
+      data.comparison_snapshot as Partial<ComparisonResult> & Record<string, unknown>,
+    ),
   };
 }
 
@@ -53,19 +55,23 @@ export async function sendClientCorrection(
     .eq('client_id', clientId)
     .eq('status', 'sent');
 
+  const comparison = normalizeComparisonResult(
+    params.comparison as Partial<ComparisonResult> & Record<string, unknown>,
+  );
+
   const { error: insertErr } = await supabase
     .from('client_corrections')
     .insert({
       client_id: clientId,
       tax_year: CURRENT_TAX_YEAR,
-      comparison_snapshot: params.comparison,
+      comparison_snapshot: comparison,
       staff_message: params.staffMessage || null,
       status: 'sent',
       sent_by: params.sentByName,
     });
   if (insertErr) throw insertErr;
 
-  const labels = comparisonToEmailLabels(params.comparison);
+  const labels = comparisonToEmailLabels(comparison);
   const preparer = params.preparerName ?? 'Your Tax Preparer';
   let body: string;
 
@@ -80,10 +86,10 @@ export async function sendClientCorrection(
   }
 
   const issueCount =
-    params.comparison.missing.length +
-    params.comparison.wrongYear.length +
-    params.comparison.wrongType.length +
-    params.comparison.unexpected.length;
+    comparison.missing.length +
+    comparison.wrongYear.length +
+    comparison.wrongType.length +
+    comparison.unexpected.length;
 
   await createEmailDraft({
     client_id: clientId,

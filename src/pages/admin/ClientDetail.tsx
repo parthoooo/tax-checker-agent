@@ -448,6 +448,15 @@ const ClientDetail: React.FC = () => {
       }
       return '—';
     }
+    if (analysisResult?.wrongYear.some(w => w.fileName === upload.file_name)) {
+      return 'Wrong year';
+    }
+    if (analysisResult?.wrongType.some(w => w.fileName === upload.file_name)) {
+      return 'Wrong type';
+    }
+    if (analysisResult?.unexpected.some(u => u.fileName === upload.file_name)) {
+      return 'Rejected';
+    }
     switch (upload.ai_status) {
       case 'verified': return 'Verified';
       case 'flagged': return 'Flagged';

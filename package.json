@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "install-git-hooks": "bash scripts/install-git-hooks.sh",
-    "setup:supabase": "bash scripts/setup-personal-supabase.sh"
+    "setup:supabase": "bash scripts/setup-personal-supabase.sh",
+    "generate:sample-docs": "node scripts/generate-sample-tax-pdfs.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

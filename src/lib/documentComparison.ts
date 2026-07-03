@@ -1,16 +1,44 @@
 import type { Database } from './database.types';
 import { detectDocType } from './aiSimulation';
+import { lookupDemoDocument } from './demoTaxDocumentManifest';
 import { CURRENT_TAX_YEAR, PRIOR_TAX_YEAR, docTypeLabel } from './taxConfig';
+import {
+  compareYoYDocuments,
+  isUnexpectedNonTaxDocument,
+} from './yoyDocumentCompare';
 
 type DocReq = Database['public']['Tables']['document_requirements']['Row'];
 type DocUpload = Database['public']['Tables']['document_uploads']['Row'];
 
 export interface ComparisonResult {
-  missing: { docType: string; name: string; hadIn2024: boolean }[];
+  missing: { docType: string; name: string; hadInPriorYear: boolean }[];
   wrongYear: { fileName: string; detectedYear: string; requirementName: string }[];
   wrongType: { fileName: string; expected: string; detected: string }[];
   unexpected: { fileName: string; reason: string }[];
   verified: { docType: string; fileName: string; name: string }[];
+  yoyNotes: { docType: string; fileName: string; note: string }[];
+}
+
+/** Ensure comparison payloads from edge functions or DB snapshots always have arrays. */
+export function normalizeComparisonResult(
+  raw: Partial<ComparisonResult> & Record<string, unknown>,
+): ComparisonResult {
+  const missing = Array.isArray(raw.missing)
+    ? raw.missing.map((m: Record<string, unknown>) => ({
+      docType: String(m.docType ?? ''),
+      name: String(m.name ?? ''),
+      hadInPriorYear: Boolean(m.hadInPriorYear ?? m.hadIn2024),
+    }))
+    : [];
+
+  return {
+    missing,
+    wrongYear: Array.isArray(raw.wrongYear) ? raw.wrongYear as ComparisonResult['wrongYear'] : [],
+    wrongType: Array.isArray(raw.wrongType) ? raw.wrongType as ComparisonResult['wrongType'] : [],
+    unexpected: Array.isArray(raw.unexpected) ? raw.unexpected as ComparisonResult['unexpected'] : [],
+    verified: Array.isArray(raw.verified) ? raw.verified as ComparisonResult['verified'] : [],
+    yoyNotes: Array.isArray(raw.yoyNotes) ? raw.yoyNotes as ComparisonResult['yoyNotes'] : [],
+  };
 }
 
 export interface AnalyzeDocumentResult {
@@ -107,15 +135,15 @@ export function analyzeDocumentMock(
     });
   }
 
-  if (/(bank|statement)/.test(fn)) {
+  if (/(bank|statement|receipt|paystub|pay-stub)/.test(fn)) {
     return {
       docType: detectedLabel,
       docTypeSlug: detectedSlug,
       taxYear,
       confidence: 95,
-      issues: [{ type: 'unexpected', message: 'Bank statements are not required for tax filing.' }],
+      issues: [{ type: 'unexpected', message: 'This document is not required for tax filing.' }],
       aiStatus: 'unexpected',
-      aiMessage: 'Bank statements are not required for your tax filing. Please upload the correct tax document.',
+      aiMessage: 'This document is not a required tax form. Please upload the correct tax document.',
     };
   }
 
@@ -185,6 +213,8 @@ export function compareDocuments(
   currentUploads: DocUpload[],
   priorUploads: DocUpload[],
   priorRequirements: DocReq[],
+  expectedTaxYear: string = CURRENT_TAX_YEAR,
+  priorTaxYear: string = PRIOR_TAX_YEAR,
 ): ComparisonResult {
   const result: ComparisonResult = {
     missing: [],
@@ -192,6 +222,7 @@ export function compareDocuments(
     wrongType: [],
     unexpected: [],
     verified: [],
+    yoyNotes: [],
   };
 
   const priorDocTypes = new Set(
@@ -203,6 +234,13 @@ export function compareDocuments(
       }),
   );
 
+  const priorUploadByType = new Map<string, DocUpload>();
+  for (const u of priorUploads.filter(pu => pu.ai_status === 'verified')) {
+    const req = priorRequirements.find(r => r.id === u.requirement_id);
+    const docType = req?.doc_type ?? normalizeDocTypeSlug(u.file_name);
+    priorUploadByType.set(docType, u);
+  }
+
   const verifiedCurrentByType = new Map<string, DocUpload>();
 
   for (const req of currentRequirements.filter(r => r.required)) {
@@ -212,9 +250,22 @@ export function compareDocuments(
         result.missing.push({
           docType: req.doc_type,
           name: req.name,
-          hadIn2024: true,
+          hadInPriorYear: true,
         });
       }
+      continue;
+    }
+
+    const demoMeta = lookupDemoDocument(upload.file_name);
+    const yearFromName = detectTaxYearFromFilename(upload.file_name);
+    const yearFromMeta = demoMeta?.taxYear ?? null;
+    const effectiveYear = yearFromName ?? yearFromMeta;
+
+    if (isUnexpectedNonTaxDocument(upload.file_name)) {
+      result.unexpected.push({
+        fileName: upload.file_name,
+        reason: 'Not a required tax document',
+      });
       continue;
     }
 
@@ -225,14 +276,26 @@ export function compareDocuments(
         fileName: upload.file_name,
         name: req.name,
       });
+      const priorUpload = priorUploadByType.get(req.doc_type);
+      if (priorUpload) {
+        const notes = compareYoYDocuments(
+          req.doc_type,
+          upload.file_name,
+          '',
+          priorUpload.file_name,
+          '',
+        );
+        for (const note of notes) {
+          result.yoyNotes.push({ docType: req.doc_type, fileName: upload.file_name, note });
+        }
+      }
       continue;
     }
 
-    const yearFromName = detectTaxYearFromFilename(upload.file_name);
-    if (yearFromName && yearFromName !== CURRENT_TAX_YEAR) {
+    if (effectiveYear && effectiveYear !== expectedTaxYear) {
       result.wrongYear.push({
         fileName: upload.file_name,
-        detectedYear: yearFromName,
+        detectedYear: effectiveYear,
         requirementName: req.name,
       });
       continue;
@@ -246,7 +309,7 @@ export function compareDocuments(
         detected: detectDocType(upload.file_name),
       });
     } else if (upload.ai_status === 'flagged' || upload.ai_status === 'rejected') {
-      if (/(bank|statement)/.test(upload.file_name.toLowerCase())) {
+      if (isUnexpectedNonTaxDocument(upload.file_name)) {
         result.unexpected.push({
           fileName: upload.file_name,
           reason: 'Not a required tax document',
@@ -259,23 +322,57 @@ export function compareDocuments(
         fileName: upload.file_name,
         name: req.name,
       });
+      const priorUpload = priorUploadByType.get(req.doc_type);
+      if (priorUpload) {
+        const notes = compareYoYDocuments(
+          req.doc_type,
+          upload.file_name,
+          '',
+          priorUpload.file_name,
+          '',
+        );
+        for (const note of notes) {
+          result.yoyNotes.push({ docType: req.doc_type, fileName: upload.file_name, note });
+        }
+      }
     }
   }
 
-  // Missing docs expected from prior year but not in current checklist uploads
   for (const docType of priorDocTypes) {
     const hasCurrentReq = currentRequirements.some(r => r.doc_type === docType && r.required);
     const hasVerified = verifiedCurrentByType.has(docType);
-    if (hasCurrentReq && !hasVerified && !result.missing.some(m => m.docType === docType)) {
+    const hasUpload = currentRequirements
+      .filter(r => r.doc_type === docType && r.required)
+      .some(r => currentUploads.some(u => u.requirement_id === r.id));
+    const alreadyListed = result.missing.some(m => m.docType === docType);
+    const hasOpenIssue =
+      result.wrongYear.some(w => {
+        const req = currentRequirements.find(r => r.name === w.requirementName);
+        return req?.doc_type === docType;
+      }) ||
+      result.wrongType.some(w => {
+        const upload = currentUploads.find(u => u.file_name === w.fileName);
+        const req = currentRequirements.find(r => r.id === upload?.requirement_id);
+        return req?.doc_type === docType;
+      }) ||
+      result.unexpected.some(u => {
+        const upload = currentUploads.find(up => up.file_name === u.fileName);
+        const req = currentRequirements.find(r => r.id === upload?.requirement_id);
+        return req?.doc_type === docType;
+      });
+
+    // Missing = empty slot only. Wrong-year/type uploads are not "missing".
+    if (hasCurrentReq && !hasVerified && !hasUpload && !hasOpenIssue && !alreadyListed) {
       const req = currentRequirements.find(r => r.doc_type === docType);
       result.missing.push({
         docType,
         name: req?.name ?? docTypeLabel(docType),
-        hadIn2024: true,
+        hadInPriorYear: true,
       });
     }
   }
 
+  void priorTaxYear;
   return result;
 }
 
@@ -284,6 +381,7 @@ export function resolveUploadReviewStatus(
   req: DocReq,
   upload: DocUpload,
   result: ComparisonResult,
+  expectedTaxYear: string = CURRENT_TAX_YEAR,
 ): DocUpload['ai_status'] {
   if (result.wrongYear.some(w => w.fileName === upload.file_name)) return 'flagged';
   if (result.wrongType.some(w => w.fileName === upload.file_name)) return 'flagged';
@@ -293,28 +391,36 @@ export function resolveUploadReviewStatus(
   }
 
   const yearFromName = detectTaxYearFromFilename(upload.file_name);
-  if (yearFromName && yearFromName !== CURRENT_TAX_YEAR) return 'flagged';
+  if (yearFromName && yearFromName !== expectedTaxYear) return 'flagged';
 
   const detectedSlug = normalizeDocTypeSlug(detectDocType(upload.file_name));
   if (detectedSlug !== req.doc_type && detectedSlug !== 'tax document') return 'flagged';
-  if (/(bank|statement)/.test(upload.file_name.toLowerCase())) return 'rejected';
+  if (isUnexpectedNonTaxDocument(upload.file_name)) return 'rejected';
 
   return 'verified';
 }
 
-export function comparisonToEmailLabels(result: ComparisonResult): string[] {
+export function comparisonToEmailLabels(
+  result: ComparisonResult | Partial<ComparisonResult>,
+  expectedTaxYear: string = CURRENT_TAX_YEAR,
+  priorTaxYear: string = PRIOR_TAX_YEAR,
+): string[] {
+  const normalized = normalizeComparisonResult(result as Partial<ComparisonResult> & Record<string, unknown>);
   const labels: string[] = [];
-  for (const m of result.missing) {
-    labels.push(`${CURRENT_TAX_YEAR} ${m.name}${m.hadIn2024 ? ` (had in ${PRIOR_TAX_YEAR})` : ''}`);
+  for (const m of normalized.missing) {
+    labels.push(`${expectedTaxYear} ${m.name}${m.hadInPriorYear ? ` (had in ${priorTaxYear})` : ''}`);
   }
-  for (const w of result.wrongYear) {
+  for (const w of normalized.wrongYear) {
     labels.push(`${w.requirementName} — wrong year (${w.detectedYear})`);
   }
-  for (const w of result.wrongType) {
+  for (const w of normalized.wrongType) {
     labels.push(`${w.expected} — wrong type (${w.detected} uploaded)`);
   }
-  for (const u of result.unexpected) {
+  for (const u of normalized.unexpected) {
     labels.push(`${u.fileName} — unexpected`);
+  }
+  for (const y of normalized.yoyNotes) {
+    labels.push(`${docTypeLabel(y.docType)} — ${y.note}`);
   }
   return labels;
 }

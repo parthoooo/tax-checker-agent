@@ -1,5 +1,11 @@
 import { CURRENT_TAX_YEAR } from "./taxConstants.ts";
 import type { AnalyzeTaxDocumentInput, TaxAnalysisResult } from "./geminiTaxAnalyze.ts";
+import {
+  compareYoYDocuments,
+  detectTaxYearFromPdfText,
+  extractPdfTextFromBase64,
+  isUnexpectedNonTaxDocument,
+} from "./yoyDocumentCompare.ts";
 
 function detectDocType(filename: string): string {
   const fn = filename.toLowerCase();
@@ -35,7 +41,11 @@ export function analyzeMock(input: AnalyzeTaxDocumentInput): TaxAnalysisResult {
   const expectedSlug = normalizeDocTypeSlug(input.requirementDocType);
   const expectedTaxYear = input.expectedTaxYear ?? CURRENT_TAX_YEAR;
   const yearMatch = fn.match(/20\d{2}/);
-  const taxYear = yearMatch?.[0] ?? expectedTaxYear;
+
+  const currentText = input.fileBase64 ? extractPdfTextFromBase64(input.fileBase64) : "";
+  const priorText = input.priorFileBase64 ? extractPdfTextFromBase64(input.priorFileBase64) : "";
+  const yearFromPdf = currentText ? detectTaxYearFromPdfText(currentText) : null;
+  const taxYear = yearMatch?.[0] ?? yearFromPdf ?? expectedTaxYear;
 
   if (input.existingFilenames.some((n) => n.toLowerCase() === fn)) {
     return {
@@ -49,7 +59,7 @@ export function analyzeMock(input: AnalyzeTaxDocumentInput): TaxAnalysisResult {
     };
   }
 
-  if (/(bank|statement|paystub|receipt)/.test(fn)) {
+  if (isUnexpectedNonTaxDocument(input.fileName, currentText)) {
     return {
       docType: detectedLabel,
       docTypeSlug: detectedSlug,
@@ -57,19 +67,20 @@ export function analyzeMock(input: AnalyzeTaxDocumentInput): TaxAnalysisResult {
       confidence: 95,
       issues: [{ type: "unexpected", message: "Not a required tax document." }],
       aiStatus: "unexpected",
-      aiMessage: "This document is not required for tax filing.",
+      aiMessage: "This document is not a required tax form for your checklist.",
     };
   }
 
-  if (yearMatch && yearMatch[0] !== expectedTaxYear) {
+  const effectiveYear = yearMatch?.[0] ?? yearFromPdf;
+  if (effectiveYear && effectiveYear !== expectedTaxYear) {
     return {
       docType: detectedLabel,
       docTypeSlug: detectedSlug,
-      taxYear: yearMatch[0],
+      taxYear: effectiveYear,
       confidence: 97,
-      issues: [{ type: "wrong-year", message: `Year ${yearMatch[0]} detected.` }],
+      issues: [{ type: "wrong-year", message: `Year ${effectiveYear} detected.` }],
       aiStatus: "wrong_year",
-      aiMessage: `Tax year ${yearMatch[0]} detected; ${expectedTaxYear} is required.`,
+      aiMessage: `Tax year ${effectiveYear} detected; ${expectedTaxYear} is required.`,
     };
   }
 
@@ -85,6 +96,16 @@ export function analyzeMock(input: AnalyzeTaxDocumentInput): TaxAnalysisResult {
     };
   }
 
+  const yoyNotes = input.priorFileBase64 || input.priorFileName
+    ? compareYoYDocuments(
+      expectedSlug,
+      input.fileName,
+      currentText,
+      input.priorFileName,
+      priorText,
+    )
+    : [];
+
   return {
     docType: detectedLabel,
     docTypeSlug: detectedSlug,
@@ -92,6 +113,9 @@ export function analyzeMock(input: AnalyzeTaxDocumentInput): TaxAnalysisResult {
     confidence: 96,
     issues: [],
     aiStatus: "verified",
-    aiMessage: "Document verified and stored.",
+    aiMessage: yoyNotes.length
+      ? "Document verified. Year-over-year differences noted for staff review."
+      : "Document verified and stored.",
+    yoyNotes: yoyNotes.length ? yoyNotes : undefined,
   };
 }
